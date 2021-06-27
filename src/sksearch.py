@@ -17,6 +17,24 @@ import enum
 import random
 
 
+class HillClimbingMethods(enum.Enum):
+    """
+    Possible methods to use for `hill_climbing`.
+
+    Attributes:
+      SIMPLE: choose the first successor with a higher score than the
+              current state.
+      STEEPEST_ASCENT: choose the successor with the highest score.
+      STOCHASTIC: randomly choose a successor with a higher score than
+                  the current state.
+
+    """
+
+    SIMPLE = enum.auto()
+    STEEPEST_ASCENT = enum.auto()
+    STOCHASTIC = enum.auto()
+
+
 def hill_climbing(initial_state,
                   score,
                   get_successor,
@@ -59,7 +77,7 @@ def hill_climbing(initial_state,
 
     # Global best is the best state found so far, including restarts.
     global_best_state = initial_state
-    global_best_score = score_state(initial_state)
+    global_best_score = score(initial_state)
 
     # Local best is the best state found so far, not including restarts.
     local_best_state = global_best_state
@@ -110,23 +128,4 @@ def hill_climbing(initial_state,
         local_best_state = gen_initial_state() if gen_initial_state else initial_state
         local_best_score = score(local_best_state)
 
-
     return global_best_state, global_best_score
-
-
-class HillClimbingMethods(enum.Enum):
-    """
-    Possible methods to use for `hill_climbing`.
-
-    Attributes:
-      SIMPLE: choose the first successor with a higher score than the
-              current state.
-      STEEPEST_ASCENT: choose the successor with the highest score.
-      STOCHASTIC: randomly choose a successor with a higher score than
-                  the current state.
-
-    """
-
-    SIMPLE = enum.auto()
-    STEEPEST_ASCENT = enum.auto()
-    STOCHASTIC = enum.auto()
