@@ -1,0 +1,3 @@
+.pyenv/*
+*.coverage*
+*__pycache__*
