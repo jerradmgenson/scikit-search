@@ -66,15 +66,15 @@ def mutate(a, magnitude=2, rng=np.random.default_rng()):
 
 
 def square_root2(x):
-    sign_penalty = 1 if x >= 0 else 2
+    sign_penalty = np.where(x >= 0, 1, 2)
     return np.abs(x * x - 2) * sign_penalty
 
 
 class TestPSO(unittest.TestCase):
     def test_square_root2(self):
         rng = np.random.default_rng(0)
-        guess = np.full(1, 2 * rng.random())
-        solutions = random_solutions(guess, 50,
+        guess = np.full(1, 100 * rng.random())
+        solutions = random_solutions(guess, 100,
                                      rng=rng,
                                      shuffle=False,
                                      mutation=2)
@@ -86,8 +86,8 @@ class TestPSO(unittest.TestCase):
                                       c1=1,
                                       c2=1)
 
-        self.assertAlmostEqual(best[0], 1.4109018179007498)
-        self.assertAlmostEqual(square_root2(best)[0], distance[0])
+        self.assertAlmostEqual(best, 1.4124678470364231)
+        self.assertAlmostEqual(square_root2(best), distance)
 
 
 if __name__ == '__main__':

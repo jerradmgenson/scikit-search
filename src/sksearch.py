@@ -14,6 +14,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """
 
 import enum
+import random
 
 import numpy as np
 
@@ -131,49 +132,70 @@ def hill_climbing(gen_initial_state,
     return global_best_state, global_best_score
 
 
-def pso(solutions, loss,
+def pso(initial_guesses, loss,
         c1=2,
         c2=2,
         vmax=2,
         min_error=0,
         max_iter=1000,
         rng=None):
+    """
+    Minimize a loss function using particle swarm optimization.
+
+    Args:
+      initial_guesses: A nested array-like object containing candidate
+                       solutions to the search problem. Should be
+                       compatible with numpy.ndarray.
+      loss: The loss function to be minimized. Accepts objects of the
+            same type as initial_guesses and returns an ndarray of
+            error scores >= 0, where lower scores are better.
+      c1: Personal best learning rate. Set to 2 by default.
+      c2: Global best learning rate. Set to 2 by default.
+      vmax: Maximum absolute velocity. Set to 2 by default.
+      min_error: Minimum error score required for early stopping. Set to
+                 0 by default.
+      max_iter: Maximum number of iterations before the function returns.
+                Set to 1000 by default.
+      rng: An instance of numpy.random.RandomState. Set to default_rng()
+           by default.
+
+    Returns:
+      A tuple of (best_solution, error).
+
+    """
+
     if not rng:
         rng = np.random.default_rng()
 
-    solutions = list(solutions)
-    pbest = solutions
-    pbest_fitness = list(np.full(len(solutions), np.inf))
-    velocity = list(np.full((len(solutions),) + solutions[0].shape, 0))
+    initial_guesses = np.array(initial_guesses)
+    pbest = initial_guesses
+    pbest_fitness = np.full(initial_guesses.shape, np.inf)
+    velocity = np.full((len(initial_guesses),) + initial_guesses[0].shape, 0)
     for _ in range(max_iter):
         gbest = None
         gbest_fitness = np.inf
-        for i, solution in enumerate(solutions):
-            fitness = loss(solution)
-            if fitness <= min_error:
-                return solution, fitness
+        fitness = loss(initial_guesses)
+        min_index = np.argmin(fitness)
+        gbest_fitness = fitness[min_index][0]
+        gbest = initial_guesses[min_index][0]
+        if gbest_fitness <= min_error:
+            return gbest, gbest_fitness
 
-            if fitness < pbest_fitness[i]:
-                pbest_fitness[i] = fitness
-                pbest[i] = solution
+        pbest_filter = fitness < pbest_fitness
+        pbest_fitness = np.where(pbest_filter, fitness, pbest_fitness)
+        pbest = np.where(pbest_filter, initial_guesses, pbest)
+        velocity = (velocity
+                    + c1
+                    * rng.random(velocity.shape)
+                    * (pbest - initial_guesses)
+                    + c2
+                    * rng.random(velocity.shape)
+                    * (gbest - initial_guesses))
 
-            if gbest is None or fitness < gbest_fitness:
-                gbest = solution
-                gbest_fitness = fitness
+        velocity = np.where(np.abs(velocity) > vmax,
+                            vmax * np.sign(velocity),
+                            velocity)
 
-        for i, solution in enumerate(solutions):
-            velocity[i] = (velocity[i]
-                           + c1
-                           * rng.random()
-                           * (pbest[i] - solution)
-                           + c2
-                           * rng.random()
-                           * (gbest - solution))
-
-            velocity[i] = np.where(np.abs(velocity[i]) > vmax,
-                                   vmax * np.sign(velocity[i]),
-                                   velocity[i])
-
-        solutions = [s + velocity[i] for i, s in enumerate(solutions)]
+        initial_guesses = initial_guesses + velocity
 
     return gbest, gbest_fitness
