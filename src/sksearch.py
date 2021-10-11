@@ -15,6 +15,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import enum
 import random
+from multiprocessing import Pool
 
 import numpy as np
 
@@ -138,7 +139,8 @@ def pso(initial_guesses, loss,
         vmax=2,
         min_error=0,
         max_iter=1000,
-        rng=None):
+        rng=None,
+        n_jobs=1):
     """
     Minimize a loss function using particle swarm optimization.
 
@@ -164,38 +166,57 @@ def pso(initial_guesses, loss,
 
     """
 
-    if not rng:
-        rng = np.random.default_rng()
+    def pso_(pool):
+        nonlocal rng
+        nonlocal initial_guesses
 
-    initial_guesses = np.array(initial_guesses)
-    pbest = initial_guesses
-    pbest_fitness = np.full(initial_guesses.shape, np.inf)
-    velocity = np.full((len(initial_guesses),) + initial_guesses[0].shape, 0)
-    for _ in range(max_iter):
-        gbest = None
-        gbest_fitness = np.inf
-        fitness = loss(initial_guesses)
-        min_index = np.argmin(fitness)
-        gbest_fitness = fitness[min_index][0]
-        gbest = initial_guesses[min_index][0]
-        if gbest_fitness <= min_error:
-            return gbest, gbest_fitness
+        if not rng:
+            rng = np.random.default_rng()
 
-        pbest_filter = fitness < pbest_fitness
-        pbest_fitness = np.where(pbest_filter, fitness, pbest_fitness)
-        pbest = np.where(pbest_filter, initial_guesses, pbest)
-        velocity = (velocity
-                    + c1
-                    * rng.random(velocity.shape)
-                    * (pbest - initial_guesses)
-                    + c2
-                    * rng.random(velocity.shape)
-                    * (gbest - initial_guesses))
+        initial_guesses = np.array(initial_guesses)
+        pbest = initial_guesses
+        pbest_fitness = np.full(initial_guesses.shape, np.inf)
+        velocity = np.zeros((len(initial_guesses),) + initial_guesses[0].shape)
+        for _ in range(max_iter):
+            gbest = None
+            gbest_fitness = np.inf
+            if pool:
+                fitness = np.array(pool.map(loss, initial_guesses))
 
-        velocity = np.where(np.abs(velocity) > vmax,
-                            vmax * np.sign(velocity),
-                            velocity)
+            else:
+                fitness = loss(initial_guesses)
 
-        initial_guesses = initial_guesses + velocity
+            min_index = np.argmin(fitness)
+            gbest_fitness = fitness[min_index][0]
+            gbest = initial_guesses[min_index][0]
+            if gbest_fitness <= min_error:
+                return gbest, gbest_fitness
 
-    return gbest, gbest_fitness
+            pbest_filter = fitness < pbest_fitness
+            pbest_fitness = np.where(pbest_filter, fitness, pbest_fitness)
+            pbest = np.where(pbest_filter, initial_guesses, pbest)
+            velocity = (velocity
+                        + c1
+                        * rng.random(velocity.shape)
+                        * (pbest - initial_guesses)
+                        + c2
+                        * rng.random(velocity.shape)
+                        * (gbest - initial_guesses))
+
+            velocity = np.where(np.abs(velocity) > vmax,
+                                vmax * np.sign(velocity),
+                                velocity)
+
+            initial_guesses = initial_guesses + velocity
+
+        return gbest, gbest_fitness
+
+    if n_jobs == 1:
+        return pso_(None)
+
+    elif n_jobs > 1:
+        with Pool(n_jobs) as pool:
+            return pso_(pool)
+
+    else:
+        raise ValueError(f'n_jobs must be an int >= 1 (got {n_jobs})')

@@ -89,6 +89,25 @@ class TestPSO(unittest.TestCase):
         self.assertAlmostEqual(best, 1.4124678470364231)
         self.assertAlmostEqual(square_root2(best), distance)
 
+    def test_square_root2_with_multiprocessing(self):
+        rng = np.random.default_rng(0)
+        guess = np.full(1, 100 * rng.random())
+        solutions = random_solutions(guess, 100,
+                                     rng=rng,
+                                     shuffle=False,
+                                     mutation=2)
+
+        best, distance = sksearch.pso(solutions, square_root2,
+                                      vmax=0.5,
+                                      max_iter=1000,
+                                      rng=rng,
+                                      c1=1,
+                                      c2=1,
+                                      n_jobs=2)
+
+        self.assertAlmostEqual(best, 1.4124678470364231)
+        self.assertAlmostEqual(square_root2(best), distance)
+
 
 if __name__ == '__main__':
     unittest.main()
