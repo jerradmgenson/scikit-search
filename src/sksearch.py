@@ -137,7 +137,7 @@ def pso(initial_guesses, loss,
         c1=2,
         c2=2,
         vmax=2,
-        min_error=0,
+        max_error=0,
         max_iter=1000,
         rng=None,
         n_jobs=1):
@@ -154,12 +154,14 @@ def pso(initial_guesses, loss,
       c1: Personal best learning rate. Set to 2 by default.
       c2: Global best learning rate. Set to 2 by default.
       vmax: Maximum absolute velocity. Set to 2 by default.
-      min_error: Minimum error score required for early stopping. Set to
+      max_error: Maximum error score required for early stopping. Set to
                  0 by default.
       max_iter: Maximum number of iterations before the function returns.
                 Set to 1000 by default.
       rng: An instance of numpy.random.RandomState. Set to default_rng()
            by default.
+      n_jobs: Number of processes to use when computing the loss function
+              on each possible function. Set to 1 by default.
 
     Returns:
       A tuple of (best_solution, error).
@@ -189,7 +191,7 @@ def pso(initial_guesses, loss,
             min_index = np.argmin(fitness)
             gbest_fitness = fitness[min_index][0]
             gbest = initial_guesses[min_index][0]
-            if gbest_fitness <= min_error:
+            if gbest_fitness <= max_error:
                 return gbest, gbest_fitness
 
             pbest_filter = fitness < pbest_fitness
@@ -220,3 +222,76 @@ def pso(initial_guesses, loss,
 
     else:
         raise ValueError(f'n_jobs must be an int >= 1 (got {n_jobs})')
+
+
+def ga(initial_guesses, loss,
+       max_error=0,
+       max_iter=1000,
+       rng=np.random.default_rng()):
+    """
+    Minimize a loss function using genetic algorithm.
+
+    Args:
+      initial_guesses: A nested array-like object containing candidate
+                       solutions to the search problem. Should be
+                       compatible with numpy.ndarray.
+      loss: The loss function to be minimized. Accepts objects of the
+            same type as initial_guesses and returns an ndarray of
+            error scores >= 0, where lower scores are better.
+      max_error: Maximum error score required for early stopping. Set to
+                 0 by default.
+      max_iter: Maximum number of iterations before the function returns.
+                Set to 1000 by default.
+      rng: An instance of numpy.random.RandomState. Set to default_rng()
+           by default.
+
+    Returns:
+      A tuple of (best_solution, error).
+
+    """
+
+    old_population = initial_guesses
+    for _ in range(max_iter):
+        new_population = []
+        error = loss(old_population)
+        old_population = old_population[np.argsort(error)]
+        error = np.sort(error)
+        if error[0] <= max_error:
+            return old_population[0], error[0]
+
+        selection_probability = np.flip(np.arange(len(old_population)) / len(old_population))
+        indices = np.arange(len(old_population))
+        while len(new_population) < len(old_population):
+            parent_a, parent_b = rng.choice(indices,
+                                            size=2,
+                                            replace=False,
+                                            p=selection_probability)
+
+            parent_a = old_population[parent_a]
+            parent_b = old_population[parent_b]
+            kid_a = np.where(rng.random(len(parent_a)) > 0.5,
+                             parent_a,
+                             parent_b)
+
+            kid_a = _mutate(kid_a)
+            new_population.append(kid_a)
+            if len(new_population) < len(old_population):
+                kid_b = np.where(rng.random(len(parent_a)) > 0.5,
+                                 parent_a,
+                                 parent_b)
+
+            kid_b = _mutate(kid_b)
+            new_population.append(kid_b)
+
+        old_population = new_population
+
+    error = loss(old_population)
+    min_error = np.min(error)
+    best_solution = old_population[np.argmin(error)]
+
+    return best_solution, min_error
+
+
+def _mutate(a, magnitude=2, rng=np.random.default_rng()):
+    mutator = rng.random(a.shape) * rng.choice([1, -1], a.shape) * magnitude
+    return a * mutator

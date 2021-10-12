@@ -47,10 +47,10 @@ def random_solutions(a, n,
         if shuffle:
             a0 = rng.choice(a, size=len(a), replace=False)
             if mutation:
-                a0 = mutate(a0, mutation, rng)
+                a0 = sksearch._mutate(a0, mutation, rng)
 
         elif mutation:
-            a0 = mutate(a, mutation, rng)
+            a0 = sksearch._mutate(a, mutation, rng)
 
         else:
             raise ValueError('shuffle can not be False while mutation is 0')
@@ -58,11 +58,6 @@ def random_solutions(a, n,
         solutions.append(a0)
 
     return solutions
-
-
-def mutate(a, magnitude=2, rng=np.random.default_rng()):
-    mutator = rng.random(a.shape) * rng.choice([1, -1], a.shape) * magnitude
-    return a * mutator
 
 
 def square_root2(x):
