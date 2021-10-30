@@ -13,6 +13,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 """
 
+import os
 import enum
 import random
 from multiprocessing import Pool
@@ -140,7 +141,8 @@ def pso(initial_guesses, loss,
         max_error=0,
         max_iter=1000,
         rng=None,
-        n_jobs=1):
+        n_jobs=1,
+        verbose=False):
     """
     Minimize a loss function using particle swarm optimization.
 
@@ -175,27 +177,36 @@ def pso(initial_guesses, loss,
         if not rng:
             rng = np.random.default_rng()
 
+        historical_best_solution = None
+        historical_min_error = np.inf
         initial_guesses = np.array(initial_guesses)
         pbest = initial_guesses
-        pbest_fitness = np.full(initial_guesses.shape, np.inf)
+        pbest_error = np.full(len(initial_guesses), np.inf)
         velocity = np.zeros((len(initial_guesses),) + initial_guesses[0].shape)
         for _ in range(max_iter):
             gbest = None
-            gbest_fitness = np.inf
+            gbest_error = np.inf
             if pool:
-                fitness = np.array(pool.map(loss, initial_guesses))
+                error = np.array(pool.map(loss, initial_guesses))
 
             else:
-                fitness = loss(initial_guesses)
+                error = np.array(list(map(loss, initial_guesses))).flatten()
 
-            min_index = np.argmin(fitness)
-            gbest_fitness = fitness[min_index][0]
-            gbest = initial_guesses[min_index][0]
-            if gbest_fitness <= max_error:
-                return gbest, gbest_fitness
+            min_index = np.argmin(error)
+            gbest_error = error[min_index]
+            gbest = initial_guesses[min_index]
+            if gbest_error < historical_min_error:
+                historical_best_solution = gbest
+                historical_min_error = gbest_error
 
-            pbest_filter = fitness < pbest_fitness
-            pbest_fitness = np.where(pbest_filter, fitness, pbest_fitness)
+            if verbose:
+                print(f'Error: {historical_min_error}')
+
+            if gbest_error <= max_error:
+                return gbest, gbest_error
+
+            pbest_filter = np.resize(error < pbest_error, pbest.shape)
+            pbest_error = np.where(pbest_filter, error, pbest_error)
             pbest = np.where(pbest_filter, initial_guesses, pbest)
             velocity = (velocity
                         + c1
@@ -211,10 +222,14 @@ def pso(initial_guesses, loss,
 
             initial_guesses = initial_guesses + velocity
 
-        return gbest, gbest_fitness
+        return historical_best_solution, historical_min_error
 
     if n_jobs == 1:
         return pso_(None)
+
+    elif n_jobs == -1:
+        with Pool(os.cpu_count()) as pool:
+            return pso_(pool)
 
     elif n_jobs > 1:
         with Pool(n_jobs) as pool:
@@ -227,7 +242,10 @@ def pso(initial_guesses, loss,
 def ga(initial_guesses, loss,
        max_error=0,
        max_iter=1000,
-       rng=np.random.default_rng()):
+       eta1=2,
+       eta2=2,
+       rng=None,
+       verbose=False):
     """
     Minimize a loss function using genetic algorithm.
 
@@ -250,16 +268,37 @@ def ga(initial_guesses, loss,
 
     """
 
-    old_population = initial_guesses
+    if not rng:
+        rng = np.random.default_rng()
+
+    old_population = np.array(initial_guesses)
+    historical_best_solution = None
+    historical_min_error = np.inf
     for _ in range(max_iter):
         new_population = []
         error = loss(old_population)
+        generation_min_error = np.min(error)
+        if generation_min_error < historical_min_error:
+            historical_min_error = generation_min_error
+            historical_best_solution = old_population[np.argmin(error)]
+
+        if verbose:
+            print(f'error: {historical_min_error}')
+
         old_population = old_population[np.argsort(error)]
         error = np.sort(error)
         if error[0] <= max_error:
             return old_population[0], error[0]
 
-        selection_probability = np.flip(np.arange(len(old_population)) / len(old_population))
+        selection_probability = np.linspace(100, 0,
+                                            num=len(old_population),
+                                            endpoint=False)
+
+        scaling_factor = 1 / np.sum(selection_probability)
+        selection_probability = selection_probability * scaling_factor
+        fp_correction = 1 - np.sum(selection_probability)
+        selection_probability[0] += fp_correction
+
         indices = np.arange(len(old_population))
         while len(new_population) < len(old_population):
             parent_a, parent_b = rng.choice(indices,
@@ -273,25 +312,23 @@ def ga(initial_guesses, loss,
                              parent_a,
                              parent_b)
 
-            kid_a = _mutate(kid_a)
+            kid_a = _mutate(kid_a, eta=eta1, rng=rng)
             new_population.append(kid_a)
             if len(new_population) < len(old_population):
                 kid_b = np.where(rng.random(len(parent_a)) > 0.5,
                                  parent_a,
                                  parent_b)
 
-            kid_b = _mutate(kid_b)
+            kid_b = _mutate(kid_b, eta=eta2, rng=rng)
             new_population.append(kid_b)
 
-        old_population = new_population
+        old_population = np.array(new_population)
 
     error = loss(old_population)
-    min_error = np.min(error)
-    best_solution = old_population[np.argmin(error)]
 
-    return best_solution, min_error
+    return historical_best_solution, historical_min_error
 
 
-def _mutate(a, magnitude=2, rng=np.random.default_rng()):
-    mutator = rng.random(a.shape) * rng.choice([1, -1], a.shape) * magnitude
-    return a * mutator
+def _mutate(a, eta=2, rng=np.random.default_rng()):
+    mutator = rng.random(a.shape) * rng.choice([1, -1], a.shape) * eta
+    return a + mutator

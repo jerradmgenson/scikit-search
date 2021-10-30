@@ -16,28 +16,6 @@ import numpy as np
 import sksearch
 
 
-def ordering_cost(a):
-    swaps = 0
-    a0 = [a[0]]
-    unsorted = True
-    while unsorted:
-        unsorted = False
-        for x in a[1:]:
-            if a0[-1] > x:
-                unsorted = True
-                swaps = swaps + 1
-                a0.append(a0[-1])
-                a0[-2] = x
-
-            else:
-                a0.append(x)
-
-        a = a0
-        a0 = [a[0]]
-
-    return swaps
-
-
 def random_solutions(a, n,
                      rng=np.random.default_rng(),
                      shuffle=True,
@@ -61,8 +39,8 @@ def random_solutions(a, n,
 
 
 def square_root2(x):
-    sign_penalty = np.where(x >= 0, 1, 2)
-    return np.abs(x * x - 2) * sign_penalty
+    x = x.flatten()
+    return np.abs(x - 1.4142135623730951)
 
 
 class TestPSO(unittest.TestCase):
@@ -74,15 +52,16 @@ class TestPSO(unittest.TestCase):
                                      shuffle=False,
                                      mutation=2)
 
-        best, distance = sksearch.pso(solutions, square_root2,
-                                      vmax=0.5,
-                                      max_iter=1000,
-                                      rng=rng,
-                                      c1=1,
-                                      c2=1)
+        best, error = sksearch.pso(solutions, square_root2,
+                                   vmax=0.5,
+                                   max_iter=2000,
+                                   max_error=1e-6,
+                                   rng=rng,
+                                   c1=2,
+                                   c2=0.1)
 
-        self.assertAlmostEqual(best, 1.4124678470364231)
-        self.assertAlmostEqual(square_root2(best), distance)
+        self.assertAlmostEqual(best[0], 1.4142135623730951, 5)
+        self.assertAlmostEqual(square_root2(best), error)
 
     def test_square_root2_with_multiprocessing(self):
         rng = np.random.default_rng(0)
@@ -92,16 +71,36 @@ class TestPSO(unittest.TestCase):
                                      shuffle=False,
                                      mutation=2)
 
-        best, distance = sksearch.pso(solutions, square_root2,
-                                      vmax=0.5,
-                                      max_iter=1000,
-                                      rng=rng,
-                                      c1=1,
-                                      c2=1,
-                                      n_jobs=2)
+        best, error = sksearch.pso(solutions, square_root2,
+                                   vmax=0.5,
+                                   max_iter=3000,
+                                   max_error=1e-6,
+                                   rng=rng,
+                                   c1=2,
+                                   c2=0.1,
+                                   n_jobs=2)
 
-        self.assertAlmostEqual(best, 1.4124678470364231)
-        self.assertAlmostEqual(square_root2(best), distance)
+        self.assertAlmostEqual(best[0], 1.4142135623730951, 5)
+        self.assertAlmostEqual(square_root2(best), error)
+
+
+class TestGA(unittest.TestCase):
+    def test_square_root2(self):
+        rng = np.random.default_rng(0)
+        guess = np.full(1, 100 * rng.random())
+        solutions = random_solutions(guess, 100,
+                                     rng=rng,
+                                     shuffle=False,
+                                     mutation=2)
+
+        best, error = sksearch.ga(solutions, square_root2,
+                                  max_iter=2000,
+                                  eta1=0.01,
+                                  max_error=1e-6,
+                                  rng=rng)
+
+        self.assertAlmostEqual(best[0], 1.4142135623730951, 5)
+        self.assertAlmostEqual(square_root2(best), error)
 
 
 if __name__ == '__main__':
