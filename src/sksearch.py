@@ -205,8 +205,9 @@ def pso(initial_guesses, loss,
             if gbest_error <= max_error:
                 return gbest, gbest_error
 
-            pbest_filter = np.resize(error < pbest_error, pbest.shape)
+            pbest_filter = error < pbest_error
             pbest_error = np.where(pbest_filter, error, pbest_error)
+            pbest_filter = np.resize(pbest_filter, pbest.shape)
             pbest = np.where(pbest_filter, initial_guesses, pbest)
             velocity = (velocity
                         + c1
