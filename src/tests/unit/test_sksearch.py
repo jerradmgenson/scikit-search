@@ -28,7 +28,7 @@ def random_solutions(a, n,
 
 
 def square_root2(x):
-    x = x.flatten()
+    x = x[0]
     return np.abs(x**2 - 2)
 
 
@@ -132,6 +132,22 @@ class TestGA(unittest.TestCase):
 
         self.assertAlmostEqual(best[0], 1.4142135623730951, 2)
         self.assertAlmostEqual(square_root2(best), error)
+
+    def test_system_of_equations(self):
+        rng = np.random.default_rng(1)
+        shape = 100, 3
+        guesses = np.full(shape, 100) * rng.random(shape)
+        guesses = np.where(rng.random(shape) > 0.5, guesses, -guesses)
+
+        best, error = sksearch.ga(guesses, system_of_equations,
+                                  max_iter=1000,
+                                  eta1=1,
+                                  eta2=2,
+                                  max_error=0.02,
+                                  rng=rng)
+
+        self.assertAlmostEqual(error, system_of_equations(best))
+        self.assertLessEqual(error, 0.02)
 
 
 if __name__ == '__main__':

@@ -277,7 +277,7 @@ def ga(initial_guesses, loss,
     historical_min_error = np.inf
     for _ in range(max_iter):
         new_population = []
-        error = loss(old_population)
+        error = np.array(list(map(loss, old_population)))
         generation_min_error = np.min(error)
         if generation_min_error < historical_min_error:
             historical_min_error = generation_min_error
@@ -286,7 +286,12 @@ def ga(initial_guesses, loss,
         if verbose:
             print(f'error: {historical_min_error}')
 
-        old_population = old_population[np.argsort(error)]
+        try:
+            old_population = old_population[np.argsort(error)]
+
+        except IndexError:
+            import pdb; pdb.set_trace()
+
         error = np.sort(error)
         if error[0] <= max_error:
             return old_population[0], error[0]
@@ -324,8 +329,6 @@ def ga(initial_guesses, loss,
             new_population.append(kid_b)
 
         old_population = np.array(new_population)
-
-    error = loss(old_population)
 
     return historical_best_solution, historical_min_error
 
