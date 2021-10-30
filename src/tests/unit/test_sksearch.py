@@ -40,7 +40,7 @@ def random_solutions(a, n,
 
 def square_root2(x):
     x = x.flatten()
-    return np.abs(x - 1.4142135623730951)
+    return np.abs(x**2 - 2)
 
 
 class TestPSO(unittest.TestCase):
@@ -80,7 +80,7 @@ class TestPSO(unittest.TestCase):
                                    c2=0.1,
                                    n_jobs=2)
 
-        self.assertAlmostEqual(best[0], 1.4142135623730951, 5)
+        self.assertAlmostEqual(best[0], 1.4142135623730951, 4)
         self.assertAlmostEqual(square_root2(best), error)
 
 
