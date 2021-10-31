@@ -28,24 +28,26 @@ def random_solutions(a, n,
 
 
 def square_root2(x):
-    x = x[0]
-    return np.abs(x**2 - 2)
+    return np.abs(x**2 - 2).flatten()
 
 
-def system_of_equations(v):
-    x = v[0]
-    y = v[1]
-    z = v[2]
+def system_of_equations(M):
+    errors = []
+    for v in M:
+        x = v[0]
+        y = v[1]
+        z = v[2]
 
-    s1 = equation1(x, y, z)
-    s2 = equation2(x, y, z)
-    s3 = equation3(x, y, z)
+        s1 = equation1(x, y, z)
+        s2 = equation2(x, y, z)
+        s3 = equation3(x, y, z)
 
-    error = np.abs(s1 - s2)
-    error += np.abs(s1 - s3)
-    error += np.abs(s2 - s3)
+        error = np.abs(s1 - s2)
+        error += np.abs(s1 - s3)
+        error += np.abs(s2 - s3)
+        errors.append(error)
 
-    return error
+    return np.array(errors)
 
 
 def equation1(x, y, z):
@@ -112,7 +114,7 @@ class TestPSO(unittest.TestCase):
                                    vmax=1,
                                    rng=rng)
 
-        self.assertAlmostEqual(error, system_of_equations(best))
+        self.assertAlmostEqual(error, system_of_equations(np.array([best])))
         self.assertLessEqual(error, 0.01)
 
 
@@ -146,7 +148,7 @@ class TestGA(unittest.TestCase):
                                   max_error=0.02,
                                   rng=rng)
 
-        self.assertAlmostEqual(error, system_of_equations(best))
+        self.assertAlmostEqual(error, system_of_equations(np.array([best])))
         self.assertLessEqual(error, 0.02)
 
 

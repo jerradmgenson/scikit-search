@@ -187,10 +187,11 @@ def pso(initial_guesses, loss,
             gbest = None
             gbest_error = np.inf
             if pool:
-                error = np.array(pool.map(loss, initial_guesses))
+                split_guesses = np.split(initial_guesses, len(initial_guesses))
+                error = np.array(pool.map(loss, split_guesses)).flatten()
 
             else:
-                error = np.array(list(map(loss, initial_guesses))).flatten()
+                error = loss(initial_guesses)
 
             min_index = np.argmin(error)
             gbest_error = error[min_index]
@@ -277,7 +278,7 @@ def ga(initial_guesses, loss,
     historical_min_error = np.inf
     for _ in range(max_iter):
         new_population = []
-        error = np.array(list(map(loss, old_population)))
+        error = loss(old_population)
         generation_min_error = np.min(error)
         if generation_min_error < historical_min_error:
             historical_min_error = generation_min_error
