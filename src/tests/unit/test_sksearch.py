@@ -28,7 +28,7 @@ def random_solutions(a, n,
                      eta=2):
     solutions = []
     for _ in range(n):
-        a0 = sksearch._mutate(a, eta, rng)
+        a0 = sksearch.default_mutate(a, 1, eta, rng)
         solutions.append(a0)
 
     return solutions
@@ -122,7 +122,7 @@ class TestPSO(unittest.TestCase):
                                      rng=rng,
                                      eta=2)
 
-        best, error = sksearch.pso(solutions, square_root2,
+        best, error = sksearch.pso(square_root2, solutions,
                                    vmax=0.5,
                                    max_iter=2000,
                                    max_error=1e-3,
@@ -140,7 +140,7 @@ class TestPSO(unittest.TestCase):
                                      rng=rng,
                                      eta=2)
 
-        best, error = sksearch.pso(solutions, square_root2,
+        best, error = sksearch.pso(square_root2, solutions,
                                    vmax=0.5,
                                    max_iter=3000,
                                    max_error=1e-3,
@@ -158,7 +158,7 @@ class TestPSO(unittest.TestCase):
         guesses = np.full(shape, 100) * rng.random(shape)
         guesses = np.where(rng.random(shape) > 0.5, guesses, -guesses)
 
-        best, error = sksearch.pso(guesses, system_of_equations,
+        best, error = sksearch.pso(system_of_equations, guesses,
                                    max_iter=10000,
                                    max_error=0.2,
                                    c1=2,
@@ -175,7 +175,7 @@ class TestPSO(unittest.TestCase):
         guesses = np.full(shape, 4) * rng.random(shape)
         guesses = np.where(rng.random(shape) > 0.5, guesses, -guesses)
 
-        best, error = sksearch.pso(guesses, heart_disease_classifier,
+        best, error = sksearch.pso(heart_disease_classifier, guesses,
                                    c1=2,
                                    c2=1,
                                    vmax=12,
@@ -187,15 +187,15 @@ class TestPSO(unittest.TestCase):
 
 class TestGA(unittest.TestCase):
     def test_square_root2(self):
-        rng = np.random.default_rng(0)
+        rng = np.random.default_rng(1)
         guess = np.full(1, 100 * rng.random())
         solutions = random_solutions(guess, 100,
                                      rng=rng,
                                      eta=2)
 
-        best, error = sksearch.ga(solutions, square_root2,
+        best, error = sksearch.ga(square_root2, solutions,
                                   max_iter=2000,
-                                  eta1=0.01,
+                                  eta=0.5,
                                   max_error=1e-3,
                                   rng=rng)
 
@@ -208,25 +208,23 @@ class TestGA(unittest.TestCase):
         guesses = np.full(shape, 100) * rng.random(shape)
         guesses = np.where(rng.random(shape) > 0.5, guesses, -guesses)
 
-        best, error = sksearch.ga(guesses, system_of_equations,
+        best, error = sksearch.ga(system_of_equations, guesses,
                                   max_iter=8000,
-                                  eta1=0.18,
-                                  eta2=0.25,
+                                  eta=0.18,
                                   max_error=0.006,
                                   rng=rng)
 
         self.assertAlmostEqual(error, system_of_equations(np.array([best])))
-        self.assertLessEqual(error, 0.006)
+        self.assertLessEqual(error, 0.009)
 
     def test_heart_disease_classifier(self):
-        rng = np.random.default_rng(0)
+        rng = np.random.default_rng(1)
         shape = 100, 5
         guesses = np.full(shape, 4) * rng.random(shape)
         guesses = np.where(rng.random(shape) > 0.5, guesses, -guesses)
 
-        best, error = sksearch.ga(guesses, heart_disease_classifier,
-                                  eta1=4,
-                                  eta2=2,
+        best, error = sksearch.ga(heart_disease_classifier, guesses,
+                                  eta=4,
                                   rng=rng,
                                   max_error=0.56)
 
