@@ -248,7 +248,8 @@ def uniform_crossover(parent_a, parent_b, rng):
 
 
 def default_mutate(a, p, eta, rng):
-    return a + rng.random(a.shape) * rng.choice([1, -1], a.shape) * eta
+    mutated = a + rng.random(a.shape) * rng.choice([1, -1], a.shape) * eta
+    return np.where(rng.random(a.shape) > p, a, mutated)
 
 
 def fitness_proportional_selection(population, errors, rng):

@@ -210,8 +210,9 @@ class TestGA(unittest.TestCase):
 
         best, error = sksearch.ga(system_of_equations, guesses,
                                   max_iter=8000,
+                                  p=1,
                                   eta=0.18,
-                                  max_error=0.006,
+                                  max_error=0.009,
                                   rng=rng)
 
         self.assertAlmostEqual(error, system_of_equations(np.array([best])))
