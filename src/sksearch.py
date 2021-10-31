@@ -183,7 +183,7 @@ def pso(initial_guesses, loss,
         pbest = initial_guesses
         pbest_error = np.full(len(initial_guesses), np.inf)
         velocity = np.zeros((len(initial_guesses),) + initial_guesses[0].shape)
-        for _ in range(max_iter):
+        for iteration in range(max_iter):
             gbest = None
             gbest_error = np.inf
             if pool:
@@ -201,7 +201,7 @@ def pso(initial_guesses, loss,
                 historical_min_error = gbest_error
 
             if verbose:
-                print(f'Error: {historical_min_error}')
+                print(f'iteration: {iteration} error: {historical_min_error}')
 
             if gbest_error <= max_error:
                 return gbest, gbest_error
@@ -276,16 +276,16 @@ def ga(initial_guesses, loss,
     old_population = np.array(initial_guesses)
     historical_best_solution = None
     historical_min_error = np.inf
-    for generation in range(max_iter):
+    for iteration in range(max_iter):
         new_population = []
         error = loss(old_population)
-        generation_min_error = np.min(error)
-        if generation_min_error < historical_min_error:
-            historical_min_error = generation_min_error
+        iteration_min_error = np.min(error)
+        if iteration_min_error < historical_min_error:
+            historical_min_error = iteration_min_error
             historical_best_solution = old_population[np.argmin(error)]
 
         if verbose:
-            print(f'generation: {generation} error: {historical_min_error}')
+            print(f'iteration: {iteration} error: {historical_min_error}')
 
         old_population = old_population[np.argsort(error)]
         error = np.sort(error)

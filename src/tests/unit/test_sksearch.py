@@ -10,10 +10,17 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """
 
 import unittest
+from pathlib import Path
+from functools import lru_cache
 
 import numpy as np
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import balanced_accuracy_score
 
 import sksearch
+
+TEST_DATA = Path(__file__).parent.parent / 'data'
 
 
 def random_solutions(a, n,
@@ -41,6 +48,70 @@ def system_of_equations(m):
     error += np.abs(-x + 0.5 * y - z)
 
     return error
+
+
+@lru_cache
+def load_heart_disease():
+    heart_disease = np.genfromtxt(TEST_DATA / 'heart_disease.csv',
+                                  delimiter=',',
+                                  missing_values='?',
+                                  filling_values='-1')
+
+    X = heart_disease[:, :-1]
+    y = heart_disease[:, -1]
+
+    return X, y
+
+
+def heart_disease_classifier(m, random_state=0):
+    X, y = load_heart_disease()
+    X_train, X_test, y_train, y_test = train_test_split(X, y,
+                                                        test_size=0.2,
+                                                        random_state=random_state)
+
+    errors = []
+    for v in m:
+        splitter = 'best' if v[0] > 0 else 'random'
+        max_depth = int(np.round(np.abs(v[1])))
+        if max_depth < 1:
+            max_depth = 1
+
+        max_features = int(np.round(np.abs(v[2])))
+        if max_features < 1:
+            max_features = 1
+
+        elif max_features > X.shape[1]:
+            max_features = X.shape[1]
+
+        min_samples_split = int(np.round(np.abs(v[3])))
+        if min_samples_split < 2:
+            min_samples_split = 2
+
+        elif min_samples_split > len(X_train):
+            min_samples_split = len(X_train)
+
+        min_samples_leaf = int(np.round(np.abs(v[4])))
+        if min_samples_leaf < 1:
+            min_samples_leaf = 1
+
+        elif min_samples_leaf > len(X_train):
+            min_samples_leaf = len(X_train)
+
+        dtc = DecisionTreeClassifier(splitter=splitter,
+                                     max_depth=max_depth,
+                                     max_features=max_features,
+                                     min_samples_split=min_samples_split,
+                                     min_samples_leaf=min_samples_leaf,
+                                     random_state=random_state)
+
+        dtc.fit(X_train, y_train)
+        y_pred = dtc.predict(X_test)
+
+        informedness = balanced_accuracy_score(y_test, y_pred, adjusted=True)
+        error = np.abs(1 - informedness)
+        errors.append(error)
+
+    return np.array(errors)
 
 
 class TestPSO(unittest.TestCase):
@@ -98,6 +169,21 @@ class TestPSO(unittest.TestCase):
         self.assertAlmostEqual(error, system_of_equations(np.array([best])))
         self.assertLessEqual(error, 0.2)
 
+    def test_heart_disease_classifier(self):
+        rng = np.random.default_rng(0)
+        shape = 100, 5
+        guesses = np.full(shape, 4) * rng.random(shape)
+        guesses = np.where(rng.random(shape) > 0.5, guesses, -guesses)
+
+        best, error = sksearch.pso(guesses, heart_disease_classifier,
+                                   c1=2,
+                                   c2=1,
+                                   vmax=12,
+                                   rng=rng,
+                                   max_error=0.56)
+
+        self.assertLessEqual(error, 0.56)
+
 
 class TestGA(unittest.TestCase):
     def test_square_root2(self):
@@ -131,6 +217,20 @@ class TestGA(unittest.TestCase):
 
         self.assertAlmostEqual(error, system_of_equations(np.array([best])))
         self.assertLessEqual(error, 0.006)
+
+    def test_heart_disease_classifier(self):
+        rng = np.random.default_rng(0)
+        shape = 100, 5
+        guesses = np.full(shape, 4) * rng.random(shape)
+        guesses = np.where(rng.random(shape) > 0.5, guesses, -guesses)
+
+        best, error = sksearch.ga(guesses, heart_disease_classifier,
+                                  eta1=4,
+                                  eta2=2,
+                                  rng=rng,
+                                  max_error=0.56)
+
+        self.assertLessEqual(error, 0.56)
 
 
 if __name__ == '__main__':
