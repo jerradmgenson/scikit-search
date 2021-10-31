@@ -31,35 +31,16 @@ def square_root2(x):
     return np.abs(x**2 - 2).flatten()
 
 
-def system_of_equations(M):
-    errors = []
-    for v in M:
-        x = v[0]
-        y = v[1]
-        z = v[2]
+def system_of_equations(m):
+    x = m[:, 0]
+    y = m[:, 1]
+    z = m[:, 2]
 
-        s1 = equation1(x, y, z)
-        s2 = equation2(x, y, z)
-        s3 = equation3(x, y, z)
+    error = np.abs(3 * x + 2 * y - z - 1)
+    error += np.abs(2 * x - 2 * y + 4 * z + 2)
+    error += np.abs(-x + 0.5 * y - z)
 
-        error = np.abs(s1 - s2)
-        error += np.abs(s1 - s3)
-        error += np.abs(s2 - s3)
-        errors.append(error)
-
-    return np.array(errors)
-
-
-def equation1(x, y, z):
-    return 3 * x + 2 * y - z - 1
-
-
-def equation2(x, y, z):
-    return 2 * x - 2 * y + 4 * z + 2
-
-
-def equation3(x, y, z):
-    return -x + 0.5 * y - z
+    return error
 
 
 class TestPSO(unittest.TestCase):
@@ -108,14 +89,14 @@ class TestPSO(unittest.TestCase):
 
         best, error = sksearch.pso(guesses, system_of_equations,
                                    max_iter=10000,
-                                   max_error=0.01,
-                                   c1=1,
+                                   max_error=0.2,
+                                   c1=2,
                                    c2=1,
-                                   vmax=1,
+                                   vmax=12,
                                    rng=rng)
 
         self.assertAlmostEqual(error, system_of_equations(np.array([best])))
-        self.assertLessEqual(error, 0.01)
+        self.assertLessEqual(error, 0.2)
 
 
 class TestGA(unittest.TestCase):
@@ -142,14 +123,14 @@ class TestGA(unittest.TestCase):
         guesses = np.where(rng.random(shape) > 0.5, guesses, -guesses)
 
         best, error = sksearch.ga(guesses, system_of_equations,
-                                  max_iter=1000,
-                                  eta1=1,
-                                  eta2=2,
-                                  max_error=0.02,
+                                  max_iter=8000,
+                                  eta1=0.18,
+                                  eta2=0.25,
+                                  max_error=0.006,
                                   rng=rng)
 
         self.assertAlmostEqual(error, system_of_equations(np.array([best])))
-        self.assertLessEqual(error, 0.02)
+        self.assertLessEqual(error, 0.006)
 
 
 if __name__ == '__main__':
