@@ -1,9 +1,9 @@
 """
-Scikit-Search aims to be a production-quality, state-of-the-art library
+scikit-search aims to be a production-quality, state-of-the-art library
 of heuristics for solving general search and optimization problems.
 It implements standard approaches to describing search problems and
 solution spaces such that multiple solvers can be combined and applied
-to the same problem with a minimum of programming effort.
+to the same problem with a minimum effort on the part of the caller.
 
 Copyright 2021 Jerrad Michael Genson
 
@@ -21,149 +21,37 @@ from multiprocessing import Pool
 import numpy as np
 
 
-class HillClimbingMethods(enum.Enum):
-    """
-    Possible methods to use for `hill_climbing`.
-
-    Attributes:
-      SIMPLE: choose the first successor with a higher score than the
-              current state.
-      STEEPEST_ASCENT: choose the successor with the highest score.
-      STOCHASTIC: randomly choose a successor with a higher score than
-                  the current state.
-
-    """
-
-    SIMPLE = enum.auto()
-    STEEPEST_ASCENT = enum.auto()
-    STOCHASTIC = enum.auto()
-
-
-def hill_climbing(gen_initial_state,
-                  loss,
-                  get_successor,
-                  max_iterations=1000,
-                  method=HillClimbingMethods.STEEPEST_ASCENT,
-                  restarts=0,
-                  initial_momentum=0,
-                  max_momentum=3):
-    """
-    Find a solution to a search problem using hill climbing.
-
-    Args:
-      gen_initial_state: A function that takes no arguments and returns
-                         a new search space state.
-      loss: A function that accepts search space states and returns a
-             score >= 0 and 1 where lower scores are superior to higher
-             to scores.
-      get_successor: A generator function that accepts a search space
-                     state and yields the next state.
-      max_iterations: Maximum iterations to perform hill climbing, not
-                      counting restarts.
-      method: The hill climbing heristic to use. Must be a member of
-              `HillClimbingMethods`.
-      restarts: The number of times to restart hill climbing from an
-                initial state.
-      initial_momentum: The amount of momentum to begin with for overcoming
-                        local optima. If left to 0, momentum will not be
-                        utilized.
-      max_momentum: The maximum amount of momentum that can be reached.
-
-    Returns:
-      A tuple of (search space state, score) for the best solution that
-      is found by the hill climbing algorithm.
-
-    """
-
-    initial_state = gen_initial_state()
-
-    # Global best is the best state found so far, including restarts.
-    global_best_state = initial_state
-    global_best_score = loss(initial_state)
-
-    # Local best is the best state found so far, not including restarts.
-    local_best_state = global_best_state
-    local_best_score = global_best_score
-
-    # Restart loop - always enter loop the first time.
-    while True:
-        momentum = initial_momentum
-        while max_iterations != 0:
-            best_successor = None
-            # Set to -1 to gurantee the first state's score will exceed it.
-            best_successor_score = -1
-            successors = get_successor(local_best_state)
-            if method == HillClimbingMethods.STOCHASTIC:
-                successors = list(get_successor(local_best_state))
-                random.shuffle(successors)
-
-            for successor in successors:
-                successor_score = loss(successor)
-                if successor_score > best_successor_score:
-                    best_successor = successor
-                    best_successor_score = successor_score
-                    if method in (HillClimbingMethods.SIMPLE,
-                                  HillClimbingMethods.STOCHASTIC):
-                        break
-
-            slope = best_successor_score / local_best_score
-            if best_successor_score > local_best_score or momentum >= slope:
-                momentum = momentum * slope
-                if momentum > max_momentum:
-                    momentum = max_momentum
-
-                local_best_state = best_successor
-                local_best_score = best_successor_score
-                max_iterations = max_iterations - 1
-
-            else:
-                break
-
-        if local_best_score > global_best_score:
-            global_best_state = local_best_state
-            global_best_score = local_best_score
-
-        if restarts <= 0:
-            # Exit outer (restart) loop.
-            break
-
-        restarts = restarts - 1
-        local_best_state = gen_initial_state()
-        local_best_score = loss(local_best_state)
-
-    return global_best_state, global_best_score
-
-
-def pso(loss, guesses,
-        c1=2,
-        c2=2,
-        vmax=2,
-        max_error=0,
-        max_iter=1000,
-        rng=None,
-        n_jobs=1,
-        verbose=False):
+def particle_swarm_optimization(loss, guesses,
+                                c1=2,
+                                c2=2,
+                                vmax=2,
+                                max_error=0,
+                                max_iter=1000,
+                                n_jobs=1,
+                                rng=None,
+                                verbose=False):
     """
     Minimize a loss function using particle swarm optimization.
 
     Args:
-      guesses: A nested array-like object containing candidate
-                       solutions to the search problem. Should be
-                       compatible with numpy.ndarray.
       loss: The loss function to be minimized. Accepts objects of the
-            same type as guesses and returns an ndarray of
-            error scores >= 0, where lower scores are better.
-      c1: Personal best learning rate. Set to 2 by default.
-      c2: Global best learning rate. Set to 2 by default.
-      vmax: Maximum absolute velocity. Set to 2 by default.
-      max_error: Maximum error score required for early stopping. Set to
-                 0 by default.
+            same type as guesses and returns a 1-D ndarray of error scores,
+            where lower scores are better.
+      guesses: A 2-D array-like object containing candidate solutions to the
+               search problem. Should be compatible with numpy.ndarray.
+      c1: Personal best learning rate. Should be a positive float. Default is 2.
+      c2: Global best learning rate. Should be a positive float. Default is 2.
+      vmax: Maximum absolute velocity. Should be a positive float. Default is 2.
+      max_error: Maximum error score required for early stopping. Defaults to
+                 `0`.
       max_iter: Maximum number of iterations before the function returns.
-                Set to 1000 by default.
-      rng: An instance of numpy.random.RandomState. Set to default_rng()
-           by default.
+                Defaults to `1000`.
+      rng: An instance of numpy.random.Generator. If not given, a new Generator
+           will be created.
       n_jobs: Number of processes to use when computing the loss function
-              on each possible function. Set to 1 by default.
+              on each possible function. Set to `1` by default.
+      verbose: Set to `True` to print the error on each iteration. Default
+               is `False`.
 
     Returns:
       A tuple of (best_solution, error).
@@ -241,18 +129,76 @@ def pso(loss, guesses,
         raise ValueError(f'n_jobs must be an int >= 1 (got {n_jobs})')
 
 
+pso = particle_swarm_optimization
+
+
 def uniform_crossover(parent_a, parent_b, rng):
+    """
+    Defines a uniform crossover operator for genetic algorithm.
+
+    In uniform crossover, every element from each parent has an equal
+    probability of being chosen, and every element is chosen independently.
+
+    Args:
+      parent_a: A 1-D ndarray to breed with parent_b.
+      parent_b: A 1-D ndarray to breed with parent_a.
+      rng: An instance of `numpy.random.Generator`.
+
+    Returns:
+      An ndarray of shape `parent_a.shape` that is the result of breeding
+      parent_a with parent_b.
+
+    """
+
     return np.where(rng.random(len(parent_a)) > 0.5,
                     parent_a,
                     parent_b)
 
 
 def default_mutate(a, p, eta, rng):
+    """
+    Defines the default mutation operator for genetic algorithm.
+
+    In this mutation operator, every element of `a` has a probability `p` of
+    being randomly mutated with magnitude `eta`.
+
+    Args:
+      a: A 1-D ndarray to mutate.
+      p: The probability, as a number between 0 and 1, to mutate each element
+         of `a`.
+      eta: The magnitude of the mutations, as a float > 0.
+      rng: An instance of `numpy.random.Generator`.
+
+    Returns:
+      A mutated ndarray with shape `a.shape`.
+
+    """
+
     mutated = a + rng.random(a.shape) * rng.choice([1, -1], a.shape) * eta
     return np.where(rng.random(a.shape) > p, a, mutated)
 
 
 def fitness_proportional_selection(population, errors, rng):
+    """
+    Defines a fitness proportional selection operator for genetic algorithm.
+
+    In fitness proportional selection, each row in `population` has a
+    probability of being selected that is linearly proportional to its rank in
+    the fitness landscape (which is the inverse of the error landscape).
+
+    Args:
+      population: A 2-D ndarray of possible solutions to an optimization
+                  problem.
+      errors: A 1-D nadarray of errors corresponding to each row in
+              `population`.
+
+      rng: An instance of `numpy.random.Generator`.
+
+    Yields:
+      Rows selected from `population` as 1-D ndarrays.
+
+    """
+
     population = population[np.argsort(errors)]
     errors = np.sort(errors)
     selection_probability = np.linspace(100, 0,
@@ -275,16 +221,16 @@ def fitness_proportional_selection(population, errors, rng):
         yield population[parent_b]
 
 
-def ga(loss, guesses,
-       max_error=0,
-       max_iter=1000,
-       p=None,
-       eta=2,
-       crossover=uniform_crossover,
-       mutate=default_mutate,
-       selection=fitness_proportional_selection,
-       rng=None,
-       verbose=False):
+def genetic_algorithm(loss, guesses,
+                      p=None,
+                      eta=2,
+                      crossover=uniform_crossover,
+                      mutate=default_mutate,
+                      selection=fitness_proportional_selection,
+                      max_error=0,
+                      max_iter=1000,
+                      rng=None,
+                      verbose=False):
     """
     Minimize a loss function using genetic algorithm.
 
@@ -294,10 +240,10 @@ def ga(loss, guesses,
             where lower scores are better.
       guesses: A 2-D array-like object containing candidate solutions to the
                search problem. Should be compatible with numpy.ndarray.
-      max_error: Maximum error score required for early stopping. Set to
-                 0 by default. Defaults to `0`.
+      max_error: Maximum error score required for early stopping. Defaults to
+                 `0`.
       max_iter: Maximum number of iterations before the function returns.
-                Set to 1000 by default. Defaults to `1000`.
+                Defaults to `1000`.
       p: The first learning rate used by genetic algorithm. Controls the
          frequency of mutations, i.e. the probability that each element in a
          "child" solution will be mutated. If None (the default), p is
@@ -320,8 +266,8 @@ def ga(loss, guesses,
                  `fitness_proportional_selection`.
       rng: An instance of numpy.random.Generator. If not given, a new Generator
            will be created.
-      verbose: Set to True to print the error on each iteration. Default
-               is False.
+      verbose: Set to `True` to print the error on each iteration. Default
+               is `False`.
 
     Returns:
       A tuple of (best_solution, error).
@@ -331,11 +277,10 @@ def ga(loss, guesses,
     if not rng:
         rng = np.random.default_rng()
 
-    guesses = np.array(guesses)
-    if p is None:
-        p = 1 / guesses.shape[1]
-
     old_population = np.array(guesses)
+    if p is None:
+        p = 1 / old_population.shape[1]
+
     historical_best_solution = None
     historical_min_error = np.inf
     for iteration in range(max_iter):
@@ -364,3 +309,6 @@ def ga(loss, guesses,
         old_population = np.array(new_population)
 
     return historical_best_solution, historical_min_error
+
+
+ga = genetic_algorithm
