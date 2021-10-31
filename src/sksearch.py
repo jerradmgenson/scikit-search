@@ -286,12 +286,7 @@ def ga(initial_guesses, loss,
         if verbose:
             print(f'error: {historical_min_error}')
 
-        try:
-            old_population = old_population[np.argsort(error)]
-
-        except IndexError:
-            import pdb; pdb.set_trace()
-
+        old_population = old_population[np.argsort(error)]
         error = np.sort(error)
         if error[0] <= max_error:
             return old_population[0], error[0]
