@@ -346,17 +346,13 @@ def genetic_algorithm(loss, guesses,
 
 
 def _adapt(x0, curr_iter, max_iter):
-    x1 = _calc_param_space(x0, curr_iter, max_iter)[curr_iter]
+    x1 = _calc_param_space(x0, max_iter)[curr_iter]
     return x1
 
 
 @lru_cache
-def _calc_param_space(x0, curr_iter, max_iter):
-    return np.geomspace(x0, 0.001, max_iter, endpoint=False)
-
-
-def _order_of_magnitude(x):
-    return math.floor(math.log(x, 10))
+def _calc_param_space(x0, max_iter):
+    return np.linspace(x0, 0.001, max_iter)
 
 
 ga = genetic_algorithm
