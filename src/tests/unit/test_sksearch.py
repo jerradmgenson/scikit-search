@@ -209,16 +209,14 @@ class TestGA(unittest.TestCase):
         guesses = np.where(rng.random(shape) > 0.5, guesses, -guesses)
 
         best, error = sksearch.ga(system_of_equations, guesses,
-                                  max_iter=8000,
+                                  max_iter=3000,
                                   p='adaptive',
-#                                  eta=0.18,
                                   eta='adaptive',
-                                  max_error=0.009,
-                                  verbose=True,
+                                  max_error=0.04,
                                   rng=rng)
 
         self.assertAlmostEqual(error, system_of_equations(np.array([best])))
-        self.assertLessEqual(error, 0.009)
+        self.assertLessEqual(error, 0.04)
 
     def test_heart_disease_classifier(self):
         rng = np.random.default_rng(1)
