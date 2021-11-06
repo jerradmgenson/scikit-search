@@ -169,7 +169,7 @@ class TestPSO(unittest.TestCase):
         self.assertAlmostEqual(error, system_of_equations(np.array([best])))
         self.assertLessEqual(error, 0.2)
 
-    def test_heart_disease_classifier(self):
+    def test_decision_tree(self):
         rng = np.random.default_rng(0)
         shape = 100, 5
         guesses = np.full(shape, 4) * rng.random(shape)
@@ -209,14 +209,14 @@ class TestGA(unittest.TestCase):
         guesses = np.where(rng.random(shape) > 0.5, guesses, -guesses)
 
         best, error = sksearch.ga(system_of_equations, guesses,
-                                  max_iter=3000,
-                                  p='adaptive',
-                                  eta='adaptive',
-                                  max_error=0.04,
+                                  max_iter=8000,
+                                  p=1,
+                                  eta=0.18,
+                                  max_error=0.009,
                                   rng=rng)
 
         self.assertAlmostEqual(error, system_of_equations(np.array([best])))
-        self.assertLessEqual(error, 0.04)
+        self.assertLessEqual(error, 0.009)
 
     def test_heart_disease_classifier(self):
         rng = np.random.default_rng(1)
@@ -230,6 +230,74 @@ class TestGA(unittest.TestCase):
                                   max_error=0.56)
 
         self.assertLessEqual(error, 0.56)
+
+    def test_square_root2_adaptive(self):
+        rng = np.random.default_rng(1)
+        guess = np.full(1, 100 * rng.random())
+        solutions = random_solutions(guess, 100,
+                                     rng=rng,
+                                     eta=2)
+
+        best, error = sksearch.ga(square_root2, solutions,
+                                  max_iter=100,
+                                  p='adaptive',
+                                  eta='adaptive',
+                                  adaptive_population_size=True,
+                                  max_error=1e-3,
+                                  rng=rng)
+
+        self.assertAlmostEqual(abs(best[0]), 1.4142135623730951, 2)
+        self.assertAlmostEqual(square_root2(best), error)
+
+    def test_system_of_equations_adaptive(self):
+        rng = np.random.default_rng(1)
+        shape = 100, 3
+        guesses = np.full(shape, 10) * rng.random(shape)
+        guesses = np.where(rng.random(shape) > 0.5, guesses, -guesses)
+
+        best, error = sksearch.ga(system_of_equations, guesses,
+                                  max_iter=9999,
+                                  p='adaptive',
+                                  eta='adaptive',
+                                  adaptive_population_size=True,
+                                  max_error=0.04,
+                                  rng=rng)
+
+        self.assertAlmostEqual(error, system_of_equations(np.array([best])))
+        self.assertLessEqual(error, 0.04)
+
+    def test_decision_tree_adaptive(self):
+        rng = np.random.default_rng(1)
+        shape = 100, 5
+        guesses = np.full(shape, 4) * rng.random(shape)
+
+        best, error = sksearch.ga(heart_disease_classifier, guesses,
+                                  max_iter=100,
+                                  p='adaptive',
+                                  eta='adaptive',
+                                  adaptive_population_size=True,
+                                  rng=rng,
+                                  max_error=0.56)
+
+        self.assertLessEqual(error, 0.56)
+
+    def test_square_root2_auto(self):
+        rng = np.random.default_rng(1)
+        guess = np.full(1, 100 * rng.random())
+        solutions = random_solutions(guess, 100,
+                                     rng=rng,
+                                     eta=2)
+
+        best, error = sksearch.ga(square_root2, solutions,
+                                  max_iter=100,
+                                  p='auto',
+                                  eta='auto',
+                                  max_error=1e-3,
+                                  rng=rng)
+
+        self.assertAlmostEqual(abs(best[0]), 1.4142135623730951, 2)
+        self.assertAlmostEqual(square_root2(best), error)
+
 
 
 class TestUniformCrossover(unittest.TestCase):

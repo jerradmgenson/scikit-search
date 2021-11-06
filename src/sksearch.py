@@ -224,6 +224,7 @@ def fitness_proportional_selection(population, errors, rng):
 def genetic_algorithm(loss, guesses,
                       p='auto',
                       eta='auto',
+                      adaptive_population_size=False,
                       crossover=uniform_crossover,
                       mutate=default_mutate,
                       selection=fitness_proportional_selection,
@@ -278,8 +279,10 @@ def genetic_algorithm(loss, guesses,
         rng = np.random.default_rng()
 
     old_population = np.array(guesses)
+    pop_size0 = len(old_population)
+    pop_size1 = pop_size0
     if eta in ('auto', 'adaptive'):
-        eta0 = np.min(np.std(old_population, axis=1))
+        eta0 = np.min(np.std(old_population, axis=0))
 
     else:
         eta0 = eta
@@ -309,7 +312,7 @@ def genetic_algorithm(loss, guesses,
             historical_best_solution = old_population[np.argmin(error)]
 
         if verbose:
-            msg = f'iteration: {iteration} error: {historical_min_error} p: {p1} eta: {eta1}'
+            msg = f'iteration: {iteration} error: {historical_min_error} p: {p1} eta: {eta1} pop_size: {pop_size1}'
             print(msg)
 
         min_index = np.argmin(error)
@@ -318,7 +321,7 @@ def genetic_algorithm(loss, guesses,
 
         selector = selection(old_population, error, rng)
         new_population = []
-        while len(new_population) < len(old_population):
+        while len(new_population) < pop_size1:
             parent_a = next(selector)
             parent_b = next(selector)
             kid_a = crossover(parent_a, parent_b, rng)
@@ -331,7 +334,7 @@ def genetic_algorithm(loss, guesses,
         if var_error0 is None:
             var_error0 = var_error1
 
-        if mean_error0 is None and var_error1 / var_error0 < 0.1:
+        if mean_error0 is None and (var_error1 / var_error0 < 0.1 or iteration > math.sqrt(max_iter)):
             mean_error0 = mean_error1
 
         if mean_error0 and p == 'adaptive':
@@ -343,6 +346,14 @@ def genetic_algorithm(loss, guesses,
             eta1 = _adapt0(eta0, mean_error0, mean_error1, iteration)
             if eta1 > eta0:
                 eta1 = eta0
+
+        if mean_error0 and adaptive_population_size:
+            pop_size1 = int(_adapt0(pop_size0, mean_error0, mean_error1, iteration))
+            if pop_size1 > pop_size0:
+                pop_size1 = pop_size0
+
+            elif pop_size1 < math.sqrt(pop_size0):
+                pop_size1 = int(math.ceil(math.sqrt(pop_size0)))
 
     return historical_best_solution, historical_min_error
 
