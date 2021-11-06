@@ -14,8 +14,8 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """
 
 import os
-import enum
-import random
+import math
+from functools import partial
 from multiprocessing import Pool
 
 import numpy as np
@@ -222,8 +222,8 @@ def fitness_proportional_selection(population, errors, rng):
 
 
 def genetic_algorithm(loss, guesses,
-                      p=None,
-                      eta=2,
+                      p='auto',
+                      eta='auto',
                       crossover=uniform_crossover,
                       mutate=default_mutate,
                       selection=fitness_proportional_selection,
@@ -278,9 +278,24 @@ def genetic_algorithm(loss, guesses,
         rng = np.random.default_rng()
 
     old_population = np.array(guesses)
-    if p is None:
-        p = 1 / old_population.shape[1]
+    if eta in ('auto', 'adaptive'):
+        eta0 = math.log(np.min(np.max(old_population)))
 
+    if p == 'auto':
+        p0 = 1 / old_population.shape[1]
+
+    elif p == 'adaptive':
+        p0 = 1
+
+    else:
+        p0 = p
+
+    p1 = p0
+    eta1 = eta0
+    _adapt0 = partial(_adapt, _order_of_magnitude(max_iter))
+
+    mean_error0 = None
+    var_error0 = None
     historical_best_solution = None
     historical_min_error = np.inf
     for iteration in range(max_iter):
@@ -291,7 +306,8 @@ def genetic_algorithm(loss, guesses,
             historical_best_solution = old_population[np.argmin(error)]
 
         if verbose:
-            print(f'iteration: {iteration} error: {historical_min_error}')
+            msg = f'iteration: {iteration} error: {historical_min_error} p: {p1} eta: {eta1}'
+            print(msg)
 
         min_index = np.argmin(error)
         if error[min_index] <= max_error:
@@ -303,12 +319,37 @@ def genetic_algorithm(loss, guesses,
             parent_a = next(selector)
             parent_b = next(selector)
             kid_a = crossover(parent_a, parent_b, rng)
-            kid_a = mutate(kid_a, p, eta, rng)
+            kid_a = mutate(kid_a, p1, eta1, rng)
             new_population.append(kid_a)
 
         old_population = np.array(new_population)
+        mean_error1 = np.mean(error)
+        var_error1 = np.var(error)
+        if var_error0 is None:
+            var_error0 = var_error1
+
+        if mean_error0 is None and var_error1 / var_error0 < 0.1:
+            mean_error0 = mean_error1
+
+        if mean_error0 and p == 'adaptive':
+            p1 = _adapt0(p0, mean_error0, mean_error1, iteration)
+            if p1 > p0:
+                p1 = p0
+
+        if mean_error0 and eta == 'adaptive':
+            eta1 = _adapt0(eta0, mean_error0, mean_error1, iteration)
+            if eta1 > eta0:
+                eta1 = eta0
 
     return historical_best_solution, historical_min_error
+
+
+def _adapt(order, x0, orig_error, curr_error, iteration):
+    return (curr_error / orig_error + 10 ** order / iteration) / 2 * x0
+
+
+def _order_of_magnitude(x):
+    return math.floor(math.log(x, 10))
 
 
 ga = genetic_algorithm

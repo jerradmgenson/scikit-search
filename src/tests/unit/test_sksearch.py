@@ -210,9 +210,11 @@ class TestGA(unittest.TestCase):
 
         best, error = sksearch.ga(system_of_equations, guesses,
                                   max_iter=8000,
-                                  p=1,
-                                  eta=0.18,
+                                  p='adaptive',
+#                                  eta=0.18,
+                                  eta='adaptive',
                                   max_error=0.009,
+                                  verbose=True,
                                   rng=rng)
 
         self.assertAlmostEqual(error, system_of_equations(np.array([best])))
@@ -230,6 +232,35 @@ class TestGA(unittest.TestCase):
                                   max_error=0.56)
 
         self.assertLessEqual(error, 0.56)
+
+
+class TestUniformCrossover(unittest.TestCase):
+    def test_uniform_crossover_typical_arguments(self):
+        parent_a = np.zeros(10000)
+        parent_b = np.ones(10000)
+        rng = np.random.default_rng(0)
+        child = sksearch.uniform_crossover(parent_a, parent_b, rng)
+        self.assertLessEqual(np.abs(np.sum(child) - 5000), 10)
+
+
+class TestDefaultMutate(unittest.TestCase):
+    def test_p_0(self):
+        a = np.zeros(10000)
+        rng = np.random.default_rng(0)
+        b = sksearch.default_mutate(a, 0, 1, rng)
+        self.assertEqual(np.sum(b > 0), 0)
+
+    def test_p_1(self):
+        a = np.zeros(10000)
+        rng = np.random.default_rng(0)
+        b = sksearch.default_mutate(a, 1, 1, rng)
+        self.assertEqual(np.sum(b == 0), 0)
+
+    def test_p_05(self):
+        a = np.zeros(10000)
+        rng = np.random.default_rng(0)
+        b = sksearch.default_mutate(a, 0.5, 1, rng)
+        self.assertLessEqual(np.abs(np.sum(b == 0) - 5000), 5)
 
 
 if __name__ == '__main__':
