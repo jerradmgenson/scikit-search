@@ -218,7 +218,7 @@ class TestGA(unittest.TestCase):
         self.assertAlmostEqual(error, system_of_equations(np.array([best])))
         self.assertLessEqual(error, 0.009)
 
-    def test_heart_disease_classifier(self):
+    def test_decision_tree(self):
         rng = np.random.default_rng(1)
         shape = 100, 5
         guesses = np.full(shape, 4) * rng.random(shape)
@@ -239,7 +239,7 @@ class TestGA(unittest.TestCase):
                                      eta=2)
 
         best, error = sksearch.ga(square_root2, solutions,
-                                  max_iter=100,
+                                  max_iter=1000,
                                   p='adaptive',
                                   eta='adaptive',
                                   adaptive_population_size=True,
@@ -256,7 +256,7 @@ class TestGA(unittest.TestCase):
         guesses = np.where(rng.random(shape) > 0.5, guesses, -guesses)
 
         best, error = sksearch.ga(system_of_equations, guesses,
-                                  max_iter=9999,
+                                  max_iter=1000,
                                   p='adaptive',
                                   eta='adaptive',
                                   adaptive_population_size=True,
@@ -272,7 +272,7 @@ class TestGA(unittest.TestCase):
         guesses = np.full(shape, 4) * rng.random(shape)
 
         best, error = sksearch.ga(heart_disease_classifier, guesses,
-                                  max_iter=100,
+                                  max_iter=1000,
                                   p='adaptive',
                                   eta='adaptive',
                                   adaptive_population_size=True,
@@ -297,7 +297,6 @@ class TestGA(unittest.TestCase):
 
         self.assertAlmostEqual(abs(best[0]), 1.4142135623730951, 2)
         self.assertAlmostEqual(square_root2(best), error)
-
 
 
 class TestUniformCrossover(unittest.TestCase):

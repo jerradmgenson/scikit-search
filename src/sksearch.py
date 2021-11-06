@@ -15,7 +15,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import os
 import math
-from functools import partial
+from functools import lru_cache
 from multiprocessing import Pool
 
 import numpy as np
@@ -298,9 +298,6 @@ def genetic_algorithm(loss, guesses,
 
     p1 = p0
     eta1 = eta0
-    _adapt0 = partial(_adapt, _order_of_magnitude(max_iter))
-
-    mean_error0 = None
     var_error0 = None
     historical_best_solution = None
     historical_min_error = np.inf
@@ -329,37 +326,33 @@ def genetic_algorithm(loss, guesses,
             new_population.append(kid_a)
 
         old_population = np.array(new_population)
-        mean_error1 = np.mean(error)
         var_error1 = np.var(error)
-        if var_error0 is None:
+        if var_error0 and var_error1 / var_error0 < 0.1 or iteration > math.sqrt(max_iter):
+            if p == 'adaptive':
+                p1 = _adapt(p0, iteration, max_iter)
+
+            if eta == 'adaptive':
+                eta1 = _adapt(eta0, iteration, max_iter)
+
+            if adaptive_population_size:
+                pop_size1 = int(_adapt(pop_size0, iteration, max_iter))
+                if pop_size1 < math.sqrt(pop_size0):
+                    pop_size1 = int(math.ceil(math.sqrt(pop_size0)))
+
+        elif not var_error0:
             var_error0 = var_error1
-
-        if mean_error0 is None and (var_error1 / var_error0 < 0.1 or iteration > math.sqrt(max_iter)):
-            mean_error0 = mean_error1
-
-        if mean_error0 and p == 'adaptive':
-            p1 = _adapt0(p0, mean_error0, mean_error1, iteration)
-            if p1 > p0:
-                p1 = p0
-
-        if mean_error0 and eta == 'adaptive':
-            eta1 = _adapt0(eta0, mean_error0, mean_error1, iteration)
-            if eta1 > eta0:
-                eta1 = eta0
-
-        if mean_error0 and adaptive_population_size:
-            pop_size1 = int(_adapt0(pop_size0, mean_error0, mean_error1, iteration))
-            if pop_size1 > pop_size0:
-                pop_size1 = pop_size0
-
-            elif pop_size1 < math.sqrt(pop_size0):
-                pop_size1 = int(math.ceil(math.sqrt(pop_size0)))
 
     return historical_best_solution, historical_min_error
 
 
-def _adapt(order, x0, orig_error, curr_error, iteration):
-    return (curr_error / orig_error + 10 ** order / iteration) / 2 * x0
+def _adapt(x0, curr_iter, max_iter):
+    x1 = _calc_param_space(x0, curr_iter, max_iter)[curr_iter]
+    return x1
+
+
+@lru_cache
+def _calc_param_space(x0, curr_iter, max_iter):
+    return np.geomspace(x0, 0.001, max_iter, endpoint=False)
 
 
 def _order_of_magnitude(x):
