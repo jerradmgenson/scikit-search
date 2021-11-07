@@ -222,16 +222,17 @@ def fitness_proportional_selection(population, errors, rng):
 
 
 def genetic_algorithm(loss, guesses,
-                      p='auto',
-                      eta='auto',
-                      adaptive_population_size=False,
-                      crossover=uniform_crossover,
-                      mutate=default_mutate,
-                      selection=fitness_proportional_selection,
                       max_error=0,
                       max_iter=1000,
+                      early_stopping_rounds=-1,
                       rng=None,
-                      verbose=False):
+                      verbose=False,
+                      p='auto',
+                      eta='auto',
+                      adaptive_population=False,
+                      crossover=uniform_crossover,
+                      mutate=default_mutate,
+                      selection=fitness_proportional_selection):
     """
     Minimize a loss function using genetic algorithm.
 
@@ -281,8 +282,11 @@ def genetic_algorithm(loss, guesses,
     old_population = np.array(guesses)
     pop_size0 = len(old_population)
     pop_size1 = pop_size0
+    pop_size_min = math.sqrt(pop_size0)
+
     if eta in ('auto', 'adaptive'):
         eta0 = np.min(np.std(old_population, axis=0))
+        eta_min = eta0 * 0.1
 
     else:
         eta0 = eta
@@ -292,6 +296,7 @@ def genetic_algorithm(loss, guesses,
 
     elif p == 'adaptive':
         p0 = 1
+        p_min = 1 / old_population.shape[1] * 0.5
 
     else:
         p0 = p
@@ -301,12 +306,17 @@ def genetic_algorithm(loss, guesses,
     var_error0 = None
     historical_best_solution = None
     historical_min_error = np.inf
+    last_improvement = 0
     for iteration in range(max_iter):
         error = loss(old_population)
         iteration_min_error = np.min(error)
         if iteration_min_error < historical_min_error:
             historical_min_error = iteration_min_error
             historical_best_solution = old_population[np.argmin(error)]
+            last_improvement = 0
+
+        else:
+            last_improvement += 1
 
         if verbose:
             msg = f'iteration: {iteration} error: {historical_min_error} p: {p1} eta: {eta1} pop_size: {pop_size1}'
@@ -314,6 +324,9 @@ def genetic_algorithm(loss, guesses,
 
         min_index = np.argmin(error)
         if error[min_index] <= max_error:
+            return old_population[min_index], error[min_index]
+
+        if early_stopping_rounds != -1 and last_improvement > early_stopping_rounds:
             return old_population[min_index], error[min_index]
 
         selector = selection(old_population, error, rng)
@@ -329,15 +342,13 @@ def genetic_algorithm(loss, guesses,
         var_error1 = np.var(error)
         if var_error0 and var_error1 / var_error0 < 0.1 or iteration > math.sqrt(max_iter):
             if p == 'adaptive':
-                p1 = _adapt(p0, iteration, max_iter)
+                p1 = _adapt(p0, p_min, iteration, max_iter)
 
             if eta == 'adaptive':
-                eta1 = _adapt(eta0, iteration, max_iter)
+                eta1 = _adapt(eta0, eta_min, iteration, max_iter)
 
-            if adaptive_population_size:
-                pop_size1 = int(_adapt(pop_size0, iteration, max_iter))
-                if pop_size1 < math.sqrt(pop_size0):
-                    pop_size1 = int(math.ceil(math.sqrt(pop_size0)))
+            if adaptive_population:
+                pop_size1 = int(_adapt(pop_size0, pop_size_min, iteration, max_iter))
 
         elif not var_error0:
             var_error0 = var_error1
@@ -345,14 +356,14 @@ def genetic_algorithm(loss, guesses,
     return historical_best_solution, historical_min_error
 
 
-def _adapt(x0, curr_iter, max_iter):
-    x1 = _calc_param_space(x0, max_iter)[curr_iter]
+def _adapt(x0, x_min, curr_iter, max_iter):
+    x1 = _calc_param_space(x0, x_min, max_iter)[curr_iter]
     return x1
 
 
 @lru_cache
-def _calc_param_space(x0, max_iter):
-    return np.linspace(x0, 0.001, max_iter)
+def _calc_param_space(x0, x_min, max_iter):
+    return np.linspace(x0, x_min, max_iter)
 
 
 ga = genetic_algorithm

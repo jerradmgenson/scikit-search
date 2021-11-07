@@ -242,7 +242,7 @@ class TestGA(unittest.TestCase):
                                   max_iter=1000,
                                   p='adaptive',
                                   eta='adaptive',
-                                  adaptive_population_size=True,
+                                  adaptive_population=True,
                                   max_error=1e-3,
                                   rng=rng)
 
@@ -256,10 +256,10 @@ class TestGA(unittest.TestCase):
         guesses = np.where(rng.random(shape) > 0.5, guesses, -guesses)
 
         best, error = sksearch.ga(system_of_equations, guesses,
-                                  max_iter=1000,
+                                  max_iter=2000,
                                   p='adaptive',
                                   eta='adaptive',
-                                  adaptive_population_size=True,
+                                  adaptive_population=True,
                                   max_error=0.04,
                                   rng=rng)
 
@@ -275,7 +275,7 @@ class TestGA(unittest.TestCase):
                                   max_iter=1000,
                                   p='adaptive',
                                   eta='adaptive',
-                                  adaptive_population_size=True,
+                                  adaptive_population=True,
                                   rng=rng,
                                   max_error=0.56)
 
