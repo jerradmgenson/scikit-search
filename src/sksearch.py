@@ -230,6 +230,7 @@ def genetic_algorithm(loss, guesses,
                       p='auto',
                       eta='auto',
                       adaptive_population=False,
+                      elitism=False,
                       crossover=uniform_crossover,
                       mutate=default_mutate,
                       selection=fitness_proportional_selection):
@@ -262,7 +263,10 @@ def genetic_algorithm(loss, guesses,
            'adaptive', a heurstic is used to set an initial value and shrinking
            is applied as the number of iterations increase.
       adaptive_population: Set to `True` to shrink the population size as the
-                           number of iterations increase.
+                           number of iterations increase. Default is `False`.
+      elitism: Set to `True` to allow the best solution from the current
+              generation to carry over to the next, unaltered. Default is
+              `False`.
       crossover: A function that defines the genetic crossover operator. Takes
                  three arguments: parent_a and parent_b, both of which are
                  ndarrays of size `guesses.shape[1]`, and `rng`. Returns an
@@ -346,6 +350,9 @@ def genetic_algorithm(loss, guesses,
 
         selector = selection(old_population, error, rng)
         new_population = []
+        if elitism:
+            new_population = [old_population[min_index]]
+
         while len(new_population) < pop_size1:
             parent_a = next(selector)
             parent_b = next(selector)

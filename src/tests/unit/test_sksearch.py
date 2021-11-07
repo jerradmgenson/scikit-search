@@ -328,6 +328,24 @@ class TestGA(unittest.TestCase):
 
         self.assertLessEqual(error, 0.63)
 
+    def test_square_root2_elitism(self):
+        rng = np.random.default_rng(1)
+        guess = np.full(1, 100 * rng.random())
+        solutions = random_solutions(guess, 100,
+                                     rng=rng,
+                                     eta=2)
+
+        best, error = sksearch.ga(square_root2, solutions,
+                                  max_iter=1000,
+                                  p='auto',
+                                  eta='auto',
+                                  max_error=1e-3,
+                                  elitism=True,
+                                  rng=rng)
+
+        self.assertAlmostEqual(abs(best[0]), 1.4142135623730951, 2)
+        self.assertAlmostEqual(square_root2(best), error)
+
 
 class TestUniformCrossover(unittest.TestCase):
     def test_uniform_crossover_typical_arguments(self):
