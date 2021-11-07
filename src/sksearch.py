@@ -246,13 +246,23 @@ def genetic_algorithm(loss, guesses,
                  `0`.
       max_iter: Maximum number of iterations before the function returns.
                 Defaults to `1000`.
+      early_stopping_rounds: The number of iterations that are allowed to pass
+                             without improvement before the function returns.
+                             `-1` indicates no early stopping. Default is `-1`.
       p: The first learning rate used by genetic algorithm. Controls the
          frequency of mutations, i.e. the probability that each element in a
-         "child" solution will be mutated. If None (the default), p is
-         calculated as `1 / guesses.shape[1]`.
+         "child" solution will be mutated. May be a float, 'auto', or
+         'adaptive'. If set to 'auto', a heuristic is used to set a value for
+         `p`. If set to 'adaptive', a heurstic is used to set an initial value
+         and shrinking is applied as the number of iterations increase.
       eta: The second learning rate used by genetic algorithm. Controls the
            magnitude of mutations, where higher values of eta correspond to
-           higher magnitudes. Defaults to `2`.
+           higher magnitudes. May be a float, 'auto', or 'adaptive'. If set to
+           'auto', a heuristic is used to set a value for `eta`. If set to
+           'adaptive', a heurstic is used to set an initial value and shrinking
+           is applied as the number of iterations increase.
+      adaptive_population: Set to `True` to shrink the population size as the
+                           number of iterations increase.
       crossover: A function that defines the genetic crossover operator. Takes
                  three arguments: parent_a and parent_b, both of which are
                  ndarrays of size `guesses.shape[1]`, and `rng`. Returns an
