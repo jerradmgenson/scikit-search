@@ -358,5 +358,48 @@ class TestDefaultMutate(unittest.TestCase):
         self.assertLessEqual(np.abs(np.sum(b == 0) - 5000), 5)
 
 
+class TestRandomRestarts(unittest.TestCase):
+    def test_static_guesses(self):
+        rng = np.random.default_rng(1)
+        guess = np.full(1, 100 * rng.random())
+        guesses = random_solutions(guess, 100,
+                                   rng=rng,
+                                   eta=2)
+
+        best, error = sksearch.random_restarts(square_root2,
+                                               guesses,
+                                               sksearch.ga,
+                                               max_iter=1000,
+                                               p='auto',
+                                               eta='auto',
+                                               max_error=1e-3,
+                                               rng=rng)
+
+        self.assertAlmostEqual(abs(best[0]), 1.4142135623730951, 2)
+        self.assertAlmostEqual(square_root2(best), error)
+
+    def test_dynamic_guesses(self):
+        def gen_guesses(rng):
+            guess = np.full(1, 100 * rng.random())
+            guesses = random_solutions(guess, 100,
+                                       rng=rng,
+                                       eta=2)
+
+            return guesses
+
+        rng = np.random.default_rng(1)
+        best, error = sksearch.random_restarts(square_root2,
+                                               gen_guesses,
+                                               sksearch.ga,
+                                               max_iter=1000,
+                                               p='auto',
+                                               eta='auto',
+                                               max_error=1e-3,
+                                               rng=rng)
+
+        self.assertAlmostEqual(abs(best[0]), 1.4142135623730951, 2)
+        self.assertAlmostEqual(square_root2(best), error)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -388,3 +388,61 @@ def _calc_param_space_array(x0_bytes, x_min_bytes, dtype, max_iter):
 
 
 ga = genetic_algorithm
+
+
+def random_restarts(loss, guesses, search_func, *args,
+                    rng=None,
+                    verbose=False,
+                    restarts=2,
+                    **kwargs):
+    """
+    Minimize a loss function using an arbitrary search function with
+    random restarts.
+
+    Args:
+      loss: The loss function to be minimized. Accepts objects of the
+            same type as guesses and returns a 1-D ndarray of error scores,
+            where lower scores are better.
+      guesses: A 2-D array-like object containing candidate solutions to the
+               search problem. Should be compatible with numpy.ndarray.
+               This argument may also be a function that accepts an instance
+               of numpy.random.Generator and returns guesses.
+      search_func: The search function to call.
+      *args: Additional positional arguments to `search_func`.
+      rng: An instance of numpy.random.Generator. If not given, a new Generator
+           will be created.
+      verbose: Set to `True` to print the error on each iteration. Default
+               is `False`.
+      restarts: The number of restarts to perform. Default is `2`.
+      **kwargs: Additional keyword arguments to `search_func`.
+
+    Returns:
+      A tuple of (best_solution, error).
+
+    """
+
+    if not rng:
+        rng = np.random.default_rng()
+
+    best_solution = None
+    best_error = np.inf
+    for i in range(restarts):
+        if verbose:
+            print(f'restart: {i}')
+
+        try:
+            guesses0 = guesses(rng)
+
+        except TypeError:
+            guesses0 = guesses
+
+        solution, error = search_func(loss, guesses0, *args,
+                                      rng=rng,
+                                      verbose=verbose,
+                                      **kwargs)
+
+        if error < best_error:
+            best_solution = solution
+            best_error = error
+
+    return best_solution, best_error
