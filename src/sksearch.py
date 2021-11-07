@@ -284,7 +284,10 @@ def genetic_algorithm(loss, guesses,
     pop_size1 = pop_size0
     pop_size_min = math.sqrt(pop_size0)
 
-    if eta in ('auto', 'adaptive'):
+    if eta == 'auto':
+        eta0 = np.min(np.std(old_population, axis=0)) * 0.1
+
+    elif eta == 'adaptive':
         eta0 = np.min(np.std(old_population, axis=0))
         eta_min = eta0 * 0.1
 
@@ -296,7 +299,7 @@ def genetic_algorithm(loss, guesses,
 
     elif p == 'adaptive':
         p0 = 1
-        p_min = 1 / old_population.shape[1] * 0.5
+        p_min = 1 / old_population.shape[1] / 2
 
     else:
         p0 = p

@@ -269,7 +269,7 @@ class TestGA(unittest.TestCase):
     def test_decision_tree_adaptive(self):
         rng = np.random.default_rng(1)
         shape = 100, 5
-        guesses = np.full(shape, 4) * rng.random(shape)
+        guesses = np.full(shape, 8) * rng.random(shape)
 
         best, error = sksearch.ga(heart_disease_classifier, guesses,
                                   max_iter=1000,
@@ -289,7 +289,7 @@ class TestGA(unittest.TestCase):
                                      eta=2)
 
         best, error = sksearch.ga(square_root2, solutions,
-                                  max_iter=100,
+                                  max_iter=1000,
                                   p='auto',
                                   eta='auto',
                                   max_error=1e-3,
@@ -297,6 +297,36 @@ class TestGA(unittest.TestCase):
 
         self.assertAlmostEqual(abs(best[0]), 1.4142135623730951, 2)
         self.assertAlmostEqual(square_root2(best), error)
+
+    def test_system_of_equations_auto(self):
+        rng = np.random.default_rng(1)
+        shape = 100, 3
+        guesses = np.full(shape, 10) * rng.random(shape)
+        guesses = np.where(rng.random(shape) > 0.5, guesses, -guesses)
+
+        best, error = sksearch.ga(system_of_equations, guesses,
+                                  max_iter=3000,
+                                  p='auto',
+                                  eta='auto',
+                                  max_error=0.04,
+                                  rng=rng)
+
+        self.assertAlmostEqual(error, system_of_equations(np.array([best])))
+        self.assertLessEqual(error, 0.04)
+
+    def test_decision_tree_auto(self):
+        rng = np.random.default_rng(1)
+        shape = 100, 5
+        guesses = np.full(shape, 4) * rng.random(shape)
+
+        best, error = sksearch.ga(heart_disease_classifier, guesses,
+                                  max_iter=1000,
+                                  p='auto',
+                                  eta=4,
+                                  rng=rng,
+                                  max_error=0.56)
+
+        self.assertLessEqual(error, 0.56)
 
 
 class TestUniformCrossover(unittest.TestCase):
