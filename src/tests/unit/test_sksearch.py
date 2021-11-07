@@ -252,7 +252,7 @@ class TestGA(unittest.TestCase):
     def test_system_of_equations_adaptive(self):
         rng = np.random.default_rng(1)
         shape = 100, 3
-        guesses = np.full(shape, 10) * rng.random(shape)
+        guesses = np.full(shape, 5) * rng.random(shape)
         guesses = np.where(rng.random(shape) > 0.5, guesses, -guesses)
 
         best, error = sksearch.ga(system_of_equations, guesses,

@@ -15,7 +15,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import os
 import math
-from functools import lru_cache
+from functools import lru_cache, singledispatch
 from multiprocessing import Pool
 
 import numpy as np
@@ -166,7 +166,7 @@ def default_mutate(a, p, eta, rng):
       a: A 1-D ndarray to mutate.
       p: The probability, as a number between 0 and 1, to mutate each element
          of `a`.
-      eta: The magnitude of the mutations, as a float > 0.
+      eta: An array of shape a.shape specifying the magnitude of the mutations.
       rng: An instance of `numpy.random.Generator`.
 
     Returns:
@@ -285,14 +285,14 @@ def genetic_algorithm(loss, guesses,
     pop_size_min = math.sqrt(pop_size0)
 
     if eta == 'auto':
-        eta0 = np.min(np.std(old_population, axis=0)) * 0.1
+        eta0 = np.std(old_population, axis=0) * 0.1
 
     elif eta == 'adaptive':
-        eta0 = np.min(np.std(old_population, axis=0))
+        eta0 = np.std(old_population, axis=0)
         eta_min = eta0 * 0.1
 
     else:
-        eta0 = eta
+        eta0 = np.full(old_population.shape[1], eta)
 
     if p == 'auto':
         p0 = 1 / old_population.shape[1]
@@ -359,13 +359,29 @@ def genetic_algorithm(loss, guesses,
     return historical_best_solution, historical_min_error
 
 
+@singledispatch
 def _adapt(x0, x_min, curr_iter, max_iter):
     x1 = _calc_param_space(x0, x_min, max_iter)[curr_iter]
     return x1
 
 
+@_adapt.register
+def _adapt_array(x0: np.ndarray, x_min, curr_iter, max_iter):
+    x0_bytes = x0.tobytes()
+    x_min_bytes = x_min.tobytes()
+    x1 = _calc_param_space_array(x0_bytes, x_min_bytes, x0.dtype, max_iter)[curr_iter]
+    return x1
+
+
 @lru_cache
 def _calc_param_space(x0, x_min, max_iter):
+    return np.linspace(x0, x_min, max_iter)
+
+
+@lru_cache
+def _calc_param_space_array(x0_bytes, x_min_bytes, dtype, max_iter):
+    x0 = np.frombuffer(x0_bytes, dtype=dtype)
+    x_min = np.frombuffer(x_min_bytes, dtype=dtype)
     return np.linspace(x0, x_min, max_iter)
 
 
