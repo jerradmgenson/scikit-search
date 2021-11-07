@@ -285,14 +285,16 @@ def genetic_algorithm(loss, guesses,
     pop_size_min = math.sqrt(pop_size0)
 
     if eta == 'auto':
-        eta0 = np.std(old_population, axis=0) * 0.1
+        eta_upper = np.std(old_population, axis=0)
+        eta_lower = eta_upper * 0.1
+        eta0 = np.geomspace(eta_upper, eta_lower, max_iter)[int(max_iter / 2)]
 
     elif eta == 'adaptive':
         eta0 = np.std(old_population, axis=0)
         eta_min = eta0 * 0.1
 
     else:
-        eta0 = np.full(old_population.shape[1], eta)
+        eta0 = eta
 
     if p == 'auto':
         p0 = 1 / old_population.shape[1]

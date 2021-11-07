@@ -315,18 +315,18 @@ class TestGA(unittest.TestCase):
         self.assertLessEqual(error, 0.04)
 
     def test_decision_tree_auto(self):
-        rng = np.random.default_rng(1)
+        rng = np.random.default_rng(0)
         shape = 100, 5
-        guesses = np.full(shape, 4) * rng.random(shape)
+        guesses = np.full(shape, 16) * rng.random(shape)
 
         best, error = sksearch.ga(heart_disease_classifier, guesses,
-                                  max_iter=1000,
+                                  max_iter=200,
                                   p='auto',
-                                  eta=4,
+                                  eta='auto',
                                   rng=rng,
-                                  max_error=0.56)
+                                  max_error=0.63)
 
-        self.assertLessEqual(error, 0.56)
+        self.assertLessEqual(error, 0.63)
 
 
 class TestUniformCrossover(unittest.TestCase):
