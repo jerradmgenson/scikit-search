@@ -413,7 +413,7 @@ def random_restarts(loss, guesses, search_func, *args,
                     restarts=2,
                     **kwargs):
     """
-    Minimize a loss function using an arbitrary search function with
+    Minimize a loss function through an arbitrary search with
     random restarts.
 
     Args:
