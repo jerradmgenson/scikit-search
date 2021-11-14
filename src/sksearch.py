@@ -343,6 +343,8 @@ def genetic_algorithm(loss, guesses,
         pop_size0 = len(old_population)
         pop_size1 = pop_size0
         pop_size_min = math.sqrt(pop_size0)
+        if adaptive_population:
+            pop_size_space = [int(s) for s in np.linspace(pop_size0, pop_size_min, max_iter)]
 
         if eta == 'auto':
             eta_upper = np.std(old_population, axis=0)
@@ -352,6 +354,7 @@ def genetic_algorithm(loss, guesses,
         elif eta == 'adaptive':
             eta0 = np.std(old_population, axis=0)
             eta_min = eta0 * 0.1
+            eta_space = np.linspace(eta0, eta_min, max_iter)
 
         else:
             eta0 = eta
@@ -362,6 +365,7 @@ def genetic_algorithm(loss, guesses,
         elif p == 'adaptive':
             p0 = 1
             p_min = 1 / old_population.shape[1] / 2
+            p_space = np.linspace(p0, p_min, max_iter)
 
         else:
             p0 = p
@@ -419,13 +423,13 @@ def genetic_algorithm(loss, guesses,
             var_error1 = np.var(error)
             if var_error0 and var_error1 / var_error0 < 0.1 or iteration > math.sqrt(max_iter):
                 if p == 'adaptive':
-                    p1 = _adapt(p0, p_min, iteration, max_iter)
+                    p1 = p_space[iteration]
 
                 if eta == 'adaptive':
-                    eta1 = _adapt(eta0, eta_min, iteration, max_iter)
+                    eta1 = eta_space[iteration]
 
                 if adaptive_population:
-                    pop_size1 = int(_adapt(pop_size0, pop_size_min, iteration, max_iter))
+                    pop_size1 = pop_size_space[iteration]
 
             elif not var_error0:
                 var_error0 = var_error1
@@ -448,32 +452,6 @@ def genetic_algorithm(loss, guesses,
 
     else:
         raise ValueError(f'n_jobs must be an int >= 1 (got {n_jobs})')
-
-
-@singledispatch
-def _adapt(x0, x_min, curr_iter, max_iter):
-    x1 = _calc_param_space(x0, x_min, max_iter)[curr_iter]
-    return x1
-
-
-@_adapt.register
-def _adapt_array(x0: np.ndarray, x_min, curr_iter, max_iter):
-    x0_bytes = x0.tobytes()
-    x_min_bytes = x_min.tobytes()
-    x1 = _calc_param_space_array(x0_bytes, x_min_bytes, x0.dtype, max_iter)[curr_iter]
-    return x1
-
-
-@lru_cache
-def _calc_param_space(x0, x_min, max_iter):
-    return np.linspace(x0, x_min, max_iter)
-
-
-@lru_cache
-def _calc_param_space_array(x0_bytes, x_min_bytes, dtype, max_iter):
-    x0 = np.frombuffer(x0_bytes, dtype=dtype)
-    x_min = np.frombuffer(x_min_bytes, dtype=dtype)
-    return np.linspace(x0, x_min, max_iter)
 
 
 ga = genetic_algorithm
