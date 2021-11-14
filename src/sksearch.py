@@ -28,6 +28,7 @@ def particle_swarm_optimization(loss, guesses,
                                 max_error=0,
                                 max_iter=1000,
                                 early_stopping_rounds=-1,
+                                time_limit=-1,
                                 n_jobs=1,
                                 memory='default',
                                 rng=None,
@@ -51,6 +52,8 @@ def particle_swarm_optimization(loss, guesses,
       early_stopping_rounds: The number of iterations that are allowed to pass
                              without improvement before the function returns.
                              `-1` indicates no early stopping. Default is `-1`.
+      time_limit: Amount of time that genetic algorithm is allowed to
+                  run in seconds. `-1` means no time limit. Default is `-1`.
       n_jobs: Number of processes to use when evaluating the loss function `-1`
               creates a process for each available CPU. May also be an instance
               of `joblib.Parallel`. Default is `1`.
@@ -67,6 +70,9 @@ def particle_swarm_optimization(loss, guesses,
       A tuple of (best_solution, error).
 
     """
+
+    if time_limit != -1:
+        start_time = time.time()
 
     memory = _setup_memory(memory)
     if memory:
@@ -114,6 +120,9 @@ def particle_swarm_optimization(loss, guesses,
                 return gbest, gbest_error
 
             if early_stopping_rounds != -1 and last_improvement > early_stopping_rounds:
+                break
+
+            if time_limit != -1 and time.time() - start_time > time_limit:
                 break
 
             pbest_filter = error < pbest_error

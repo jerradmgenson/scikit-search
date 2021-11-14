@@ -202,6 +202,18 @@ class TestPSO(unittest.TestCase):
 
         self.assertGreater(error, 0.56)
 
+    def test_time_limit(self):
+        guesses = np.zeros((100, 10))
+        tick = time.time()
+        sksearch.pso(lambda x: np.ones(len(x)),
+                     guesses,
+                     max_iter=100000000,
+                     max_error=0,
+                     time_limit=5)
+
+        tock = time.time()
+        self.assertEqual(round(tock - tick), 5.0)
+
 
 class TestGA(unittest.TestCase):
     def test_square_root2(self):
