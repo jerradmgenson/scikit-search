@@ -20,6 +20,7 @@ from functools import lru_cache, singledispatch
 from multiprocessing import Pool
 
 import numpy as np
+from joblib import Parallel, delayed
 
 
 def particle_swarm_optimization(loss, guesses,
@@ -47,10 +48,10 @@ def particle_swarm_optimization(loss, guesses,
                  `0`.
       max_iter: Maximum number of iterations before the function returns.
                 Defaults to `1000`.
+      n_jobs: Number of processes to use when evaluating the loss function `-1`
+              creates a process for each available CPU. Set to `1` by default.
       rng: An instance of numpy.random.Generator. If not given, a new Generator
            will be created.
-      n_jobs: Number of processes to use when computing the loss function
-              on each possible function. Set to `1` by default.
       verbose: Set to `True` to print the error on each iteration. Default
                is `False`.
 
@@ -227,6 +228,7 @@ def genetic_algorithm(loss, guesses,
                       max_iter=1000,
                       early_stopping_rounds=-1,
                       time_limit=-1,
+                      n_jobs=1,
                       rng=None,
                       verbose=False,
                       p='auto',
@@ -254,6 +256,8 @@ def genetic_algorithm(loss, guesses,
                              `-1` indicates no early stopping. Default is `-1`.
       time_limit: Amount of time that genetic algorithm is allowed to
                   run in seconds. `-1` means no time limit. Default is `-1`.
+      n_jobs: Number of processes to use when evaluating the loss function `-1`
+              creates a process for each available CPU. Set to `1` by default.
       p: The first learning rate used by genetic algorithm. Controls the
          frequency of mutations, i.e. the probability that each element in a
          "child" solution will be mutated. May be a float, 'auto', or
@@ -300,92 +304,113 @@ def genetic_algorithm(loss, guesses,
     if not rng:
         rng = np.random.default_rng()
 
-    old_population = np.array(guesses)
-    pop_size0 = len(old_population)
-    pop_size1 = pop_size0
-    pop_size_min = math.sqrt(pop_size0)
+    def ga_(parallel):
+        old_population = np.array(guesses)
+        pop_size0 = len(old_population)
+        pop_size1 = pop_size0
+        pop_size_min = math.sqrt(pop_size0)
 
-    if eta == 'auto':
-        eta_upper = np.std(old_population, axis=0)
-        eta_lower = eta_upper * 0.1
-        eta0 = np.geomspace(eta_upper, eta_lower, max_iter)[int(max_iter / 2)]
+        if eta == 'auto':
+            eta_upper = np.std(old_population, axis=0)
+            eta_lower = eta_upper * 0.1
+            eta0 = np.geomspace(eta_upper, eta_lower, max_iter)[int(max_iter / 2)]
 
-    elif eta == 'adaptive':
-        eta0 = np.std(old_population, axis=0)
-        eta_min = eta0 * 0.1
-
-    else:
-        eta0 = eta
-
-    if p == 'auto':
-        p0 = 1 / old_population.shape[1]
-
-    elif p == 'adaptive':
-        p0 = 1
-        p_min = 1 / old_population.shape[1] / 2
-
-    else:
-        p0 = p
-
-    p1 = p0
-    eta1 = eta0
-    var_error0 = None
-    historical_best_solution = None
-    historical_min_error = np.inf
-    last_improvement = 0
-    for iteration in range(max_iter):
-        error = loss(old_population)
-        iteration_min_error = np.min(error)
-        if iteration_min_error < historical_min_error:
-            historical_min_error = iteration_min_error
-            historical_best_solution = old_population[np.argmin(error)]
-            last_improvement = 0
+        elif eta == 'adaptive':
+            eta0 = np.std(old_population, axis=0)
+            eta_min = eta0 * 0.1
 
         else:
-            last_improvement += 1
+            eta0 = eta
 
-        if verbose:
-            msg = f'iteration: {iteration}/{max_iter} error: {historical_min_error}'
-            print(msg)
+        if p == 'auto':
+            p0 = 1 / old_population.shape[1]
 
-        min_index = np.argmin(error)
-        if error[min_index] <= max_error:
-            return old_population[min_index], error[min_index]
+        elif p == 'adaptive':
+            p0 = 1
+            p_min = 1 / old_population.shape[1] / 2
 
-        if early_stopping_rounds != -1 and last_improvement > early_stopping_rounds:
-            break
+        else:
+            p0 = p
 
-        if time_limit != -1 and time.time() - start_time > time_limit:
-            break
+        p1 = p0
+        eta1 = eta0
+        var_error0 = None
+        historical_best_solution = None
+        historical_min_error = np.inf
+        last_improvement = 0
+        for iteration in range(max_iter):
+            if parallel:
+                splits = np.split(old_population, len(old_population))
+                error = np.array(parallel(delayed(loss)(split) for split in splits)).flatten()
 
-        selector = selection(old_population, error, rng)
-        new_population = []
-        if elitism:
-            new_population = [old_population[min_index]]
+            else:
+                error = loss(old_population)
 
-        while len(new_population) < pop_size1:
-            parent_a = next(selector)
-            parent_b = next(selector)
-            kid_a = crossover(parent_a, parent_b, rng)
-            kid_a = mutate(kid_a, p1, eta1, rng)
-            new_population.append(kid_a)
+            iteration_min_error = np.min(error)
+            if iteration_min_error < historical_min_error:
+                historical_min_error = iteration_min_error
+                historical_best_solution = old_population[np.argmin(error)]
+                last_improvement = 0
 
-        old_population = np.array(new_population)
-        var_error1 = np.var(error)
-        if var_error0 and var_error1 / var_error0 < 0.1 or iteration > math.sqrt(max_iter):
-            if p == 'adaptive':
-                p1 = _adapt(p0, p_min, iteration, max_iter)
+            else:
+                last_improvement += 1
 
-            if eta == 'adaptive':
-                eta1 = _adapt(eta0, eta_min, iteration, max_iter)
+            if verbose:
+                msg = f'iteration: {iteration}/{max_iter} error: {historical_min_error}'
+                print(msg)
 
-            if adaptive_population:
-                pop_size1 = int(_adapt(pop_size0, pop_size_min, iteration, max_iter))
+            min_index = np.argmin(error)
+            if error[min_index] <= max_error:
+                return old_population[min_index], error[min_index]
 
-        elif not var_error0:
-            var_error0 = var_error1
+            if early_stopping_rounds != -1 and last_improvement > early_stopping_rounds:
+                break
 
-    return historical_best_solution, historical_min_error
+            if time_limit != -1 and time.time() - start_time > time_limit:
+                break
+
+            selector = selection(old_population, error, rng)
+            new_population = []
+            if elitism:
+                new_population = [old_population[min_index]]
+
+            while len(new_population) < pop_size1:
+                parent_a = next(selector)
+                parent_b = next(selector)
+                kid_a = crossover(parent_a, parent_b, rng)
+                kid_a = mutate(kid_a, p1, eta1, rng)
+                new_population.append(kid_a)
+
+            old_population = np.array(new_population)
+            var_error1 = np.var(error)
+            if var_error0 and var_error1 / var_error0 < 0.1 or iteration > math.sqrt(max_iter):
+                if p == 'adaptive':
+                    p1 = _adapt(p0, p_min, iteration, max_iter)
+
+                if eta == 'adaptive':
+                    eta1 = _adapt(eta0, eta_min, iteration, max_iter)
+
+                if adaptive_population:
+                    pop_size1 = int(_adapt(pop_size0, pop_size_min, iteration, max_iter))
+
+            elif not var_error0:
+                var_error0 = var_error1
+
+        return historical_best_solution, historical_min_error
+
+    if n_jobs == 1:
+        return ga_(None)
+
+    elif n_jobs == -1:
+        with Parallel(n_jobs=os.cpu_count()) as parallel:
+            return ga_(parallel)
+
+    elif n_jobs > 1:
+        with Parallel(n_jobs=n_jobs) as parallel:
+            return ga_(parallel)
+
+    else:
+        raise ValueError(f'n_jobs must be an int >= 1 (got {n_jobs})')
 
 
 @singledispatch

@@ -360,6 +360,36 @@ class TestGA(unittest.TestCase):
         tock = time.time()
         self.assertEqual(round(tock - tick), 5.0)
 
+    def test_n_jobs_2(self):
+        rng = np.random.default_rng(0)
+        shape = 100, 5
+        guesses = np.full(shape, 16) * rng.random(shape)
+
+        best, error = sksearch.ga(heart_disease_classifier, guesses,
+                                  max_iter=200,
+                                  p='auto',
+                                  eta='auto',
+                                  n_jobs=2,
+                                  rng=rng,
+                                  max_error=0.63)
+
+        self.assertLessEqual(error, 0.63)
+
+    def test_n_jobs_all_cores(self):
+        rng = np.random.default_rng(0)
+        shape = 100, 5
+        guesses = np.full(shape, 16) * rng.random(shape)
+
+        best, error = sksearch.ga(heart_disease_classifier, guesses,
+                                  max_iter=200,
+                                  p='auto',
+                                  eta='auto',
+                                  n_jobs=-1,
+                                  rng=rng,
+                                  max_error=0.63)
+
+        self.assertLessEqual(error, 0.63)
+
 
 class TestUniformCrossover(unittest.TestCase):
     def test_uniform_crossover_typical_arguments(self):
