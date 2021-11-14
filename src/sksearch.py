@@ -19,7 +19,7 @@ import time
 from functools import lru_cache, singledispatch
 
 import numpy as np
-from joblib import Parallel, delayed
+from joblib import Memory, Parallel, delayed
 
 
 def particle_swarm_optimization(loss, guesses,
@@ -29,6 +29,7 @@ def particle_swarm_optimization(loss, guesses,
                                 max_error=0,
                                 max_iter=1000,
                                 n_jobs=1,
+                                memory='default',
                                 rng=None,
                                 verbose=False):
     """
@@ -50,6 +51,10 @@ def particle_swarm_optimization(loss, guesses,
       n_jobs: Number of processes to use when evaluating the loss function `-1`
               creates a process for each available CPU. May also be an instance
               of `joblib.Parallel`. Default is `1`.
+      memory: Location of joblib cache on the filesystem. May a string, a
+              `Path` object, an instance of `joblib.Memory`, None, or
+              'default', which uses a (generally good) location specific to
+              your operating system.
       rng: An instance of numpy.random.Generator. If not given, a new Generator
            will be created.
       verbose: Set to `True` to print the error on each iteration. Default
@@ -59,6 +64,10 @@ def particle_swarm_optimization(loss, guesses,
       A tuple of (best_solution, error).
 
     """
+
+    memory = _setup_memory(memory)
+    if memory:
+        loss = memory.cache(loss)
 
     def pso_(parallel):
         nonlocal rng
@@ -135,6 +144,18 @@ def particle_swarm_optimization(loss, guesses,
 
 
 pso = particle_swarm_optimization
+
+
+def _setup_memory(memory):
+    if memory == 'default':
+        if os.name == 'posix':
+            memory = Memory('/dev/shm/__joblib_cache__')
+
+        else:
+            memory = Memory('__joblib_cache__')
+
+    elif not isinstance(memory, Memory):
+        memory = Memory(str(memory))
 
 
 def uniform_crossover(parent_a, parent_b, rng):
@@ -232,6 +253,7 @@ def genetic_algorithm(loss, guesses,
                       early_stopping_rounds=-1,
                       time_limit=-1,
                       n_jobs=1,
+                      memory='default',
                       rng=None,
                       verbose=False,
                       p='auto',
@@ -262,6 +284,10 @@ def genetic_algorithm(loss, guesses,
       n_jobs: Number of processes to use when evaluating the loss function `-1`
               creates a process for each available CPU. May also be an instance
               of `joblib.Parallel`. Default is `1`.
+      memory: Location of joblib cache on the filesystem. May a string, a
+              `Path` object, an instance of `joblib.Memory`, None, or
+              'default', which uses a (generally good) location specific to
+              your operating system.
       p: The first learning rate used by genetic algorithm. Controls the
          frequency of mutations, i.e. the probability that each element in a
          "child" solution will be mutated. May be a float, 'auto', or
@@ -304,6 +330,10 @@ def genetic_algorithm(loss, guesses,
 
     if time_limit != -1:
         start_time = time.time()
+
+    memory = _setup_memory(memory)
+    if memory:
+        loss = memory.cache(loss)
 
     if not rng:
         rng = np.random.default_rng()
