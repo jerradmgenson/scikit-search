@@ -169,13 +169,15 @@ pso = particle_swarm_optimization
 def _setup_memory(memory):
     if memory == 'default':
         if os.name == 'posix':
-            memory = Memory('/dev/shm/__joblib_cache__')
+            memory = Memory('/dev/shm/__joblib_cache__', verbose=0)
 
         else:
-            memory = Memory('__joblib_cache__')
+            memory = Memory('__joblib_cache__', verbose=0)
 
     elif not isinstance(memory, Memory):
         memory = Memory(str(memory))
+
+    return memory
 
 
 def uniform_crossover(parent_a, parent_b, rng):
