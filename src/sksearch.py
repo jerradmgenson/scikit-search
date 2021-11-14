@@ -17,7 +17,6 @@ import os
 import math
 import time
 from functools import lru_cache, singledispatch
-from multiprocessing import Pool
 
 import numpy as np
 from joblib import Parallel, delayed
@@ -49,7 +48,8 @@ def particle_swarm_optimization(loss, guesses,
       max_iter: Maximum number of iterations before the function returns.
                 Defaults to `1000`.
       n_jobs: Number of processes to use when evaluating the loss function `-1`
-              creates a process for each available CPU. Set to `1` by default.
+              creates a process for each available CPU. May also be an instance
+              of `joblib.Parallel`. Default is `1`.
       rng: An instance of numpy.random.Generator. If not given, a new Generator
            will be created.
       verbose: Set to `True` to print the error on each iteration. Default
@@ -60,7 +60,7 @@ def particle_swarm_optimization(loss, guesses,
 
     """
 
-    def pso_(pool):
+    def pso_(parallel):
         nonlocal rng
         nonlocal guesses
 
@@ -76,9 +76,9 @@ def particle_swarm_optimization(loss, guesses,
         for iteration in range(max_iter):
             gbest = None
             gbest_error = np.inf
-            if pool:
-                split_guesses = np.split(guesses, len(guesses))
-                error = np.array(pool.map(loss, split_guesses)).flatten()
+            if parallel:
+                splits = np.split(guesses, len(guesses))
+                error = np.array(parallel(delayed(loss)(split) for split in splits)).flatten()
 
             else:
                 error = loss(guesses)
@@ -116,16 +116,19 @@ def particle_swarm_optimization(loss, guesses,
 
         return historical_best_solution, historical_min_error
 
-    if n_jobs == 1:
+    if isinstance(n_jobs, Parallel):
+        return pso_(n_jobs)
+
+    elif n_jobs == 1:
         return pso_(None)
 
     elif n_jobs == -1:
-        with Pool(os.cpu_count()) as pool:
-            return pso_(pool)
+        with Parallel(n_jobs=os.cpu_count()) as parallel:
+            return pso_(parallel)
 
     elif n_jobs > 1:
-        with Pool(n_jobs) as pool:
-            return pso_(pool)
+        with Parallel(n_jobs=n_jobs) as parallel:
+            return pso_(parallel)
 
     else:
         raise ValueError(f'n_jobs must be an int >= 1 (got {n_jobs})')
