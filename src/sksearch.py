@@ -16,7 +16,6 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 import os
 import math
 import time
-from functools import lru_cache, singledispatch
 
 import numpy as np
 from joblib import Memory, Parallel, delayed
@@ -28,6 +27,7 @@ def particle_swarm_optimization(loss, guesses,
                                 vmax=2,
                                 max_error=0,
                                 max_iter=1000,
+                                early_stopping_rounds=-1,
                                 n_jobs=1,
                                 memory='default',
                                 rng=None,
@@ -48,6 +48,9 @@ def particle_swarm_optimization(loss, guesses,
                  `0`.
       max_iter: Maximum number of iterations before the function returns.
                 Defaults to `1000`.
+      early_stopping_rounds: The number of iterations that are allowed to pass
+                             without improvement before the function returns.
+                             `-1` indicates no early stopping. Default is `-1`.
       n_jobs: Number of processes to use when evaluating the loss function `-1`
               creates a process for each available CPU. May also be an instance
               of `joblib.Parallel`. Default is `1`.
@@ -78,6 +81,7 @@ def particle_swarm_optimization(loss, guesses,
 
         historical_best_solution = None
         historical_min_error = np.inf
+        last_improvement = 0
         guesses = np.array(guesses)
         pbest = guesses
         pbest_error = np.full(len(guesses), np.inf)
@@ -98,12 +102,19 @@ def particle_swarm_optimization(loss, guesses,
             if gbest_error < historical_min_error:
                 historical_best_solution = gbest
                 historical_min_error = gbest_error
+                last_improvement = 0
+
+            else:
+                last_improvement += 1
 
             if verbose:
                 print(f'iteration: {iteration} error: {historical_min_error}')
 
             if gbest_error <= max_error:
                 return gbest, gbest_error
+
+            if early_stopping_rounds != -1 and last_improvement > early_stopping_rounds:
+                break
 
             pbest_filter = error < pbest_error
             pbest_error = np.where(pbest_filter, error, pbest_error)

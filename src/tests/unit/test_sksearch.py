@@ -186,6 +186,22 @@ class TestPSO(unittest.TestCase):
 
         self.assertLessEqual(error, 0.56)
 
+    def test_early_stopping(self):
+        rng = np.random.default_rng(0)
+        shape = 100, 5
+        guesses = np.full(shape, 4) * rng.random(shape)
+        guesses = np.where(rng.random(shape) > 0.5, guesses, -guesses)
+
+        best, error = sksearch.pso(heart_disease_classifier, guesses,
+                                   c1=2,
+                                   c2=1,
+                                   vmax=12,
+                                   rng=rng,
+                                   early_stopping_rounds=2,
+                                   max_error=0.56)
+
+        self.assertGreater(error, 0.56)
+
 
 class TestGA(unittest.TestCase):
     def test_square_root2(self):
@@ -418,6 +434,21 @@ class TestGA(unittest.TestCase):
                                       max_error=0.63)
 
         self.assertLessEqual(error, 0.63)
+
+    def test_early_stopping(self):
+        rng = np.random.default_rng(1)
+        shape = 100, 3
+        guesses = np.full(shape, 10) * rng.random(shape)
+        guesses = np.where(rng.random(shape) > 0.5, guesses, -guesses)
+        _, error = sksearch.ga(system_of_equations, guesses,
+                               max_iter=3000,
+                               p='auto',
+                               eta='auto',
+                               max_error=0.04,
+                               early_stopping_rounds=10,
+                               rng=rng)
+
+        self.assertGreater(error, 0.04)
 
 
 class TestUniformCrossover(unittest.TestCase):
