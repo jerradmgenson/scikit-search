@@ -15,6 +15,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import os
 import math
+import time
 from functools import lru_cache, singledispatch
 from multiprocessing import Pool
 
@@ -225,6 +226,7 @@ def genetic_algorithm(loss, guesses,
                       max_error=0,
                       max_iter=1000,
                       early_stopping_rounds=-1,
+                      time_limit=-1,
                       rng=None,
                       verbose=False,
                       p='auto',
@@ -250,6 +252,8 @@ def genetic_algorithm(loss, guesses,
       early_stopping_rounds: The number of iterations that are allowed to pass
                              without improvement before the function returns.
                              `-1` indicates no early stopping. Default is `-1`.
+      time_limit: Amount of time that genetic algorithm is allowed to
+                  run in seconds. `-1` means no time limit. Default is `-1`.
       p: The first learning rate used by genetic algorithm. Controls the
          frequency of mutations, i.e. the probability that each element in a
          "child" solution will be mutated. May be a float, 'auto', or
@@ -289,6 +293,9 @@ def genetic_algorithm(loss, guesses,
       A tuple of (best_solution, error).
 
     """
+
+    if time_limit != -1:
+        start_time = time.time()
 
     if not rng:
         rng = np.random.default_rng()
@@ -338,7 +345,7 @@ def genetic_algorithm(loss, guesses,
             last_improvement += 1
 
         if verbose:
-            msg = f'iteration: {iteration} error: {historical_min_error} p: {p1} eta: {eta1} pop_size: {pop_size1}'
+            msg = f'iteration: {iteration}/{max_iter} error: {historical_min_error}'
             print(msg)
 
         min_index = np.argmin(error)
@@ -346,7 +353,10 @@ def genetic_algorithm(loss, guesses,
             return old_population[min_index], error[min_index]
 
         if early_stopping_rounds != -1 and last_improvement > early_stopping_rounds:
-            return old_population[min_index], error[min_index]
+            break
+
+        if time_limit != -1 and time.time() - start_time > time_limit:
+            break
 
         selector = selection(old_population, error, rng)
         new_population = []

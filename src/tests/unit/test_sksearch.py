@@ -9,6 +9,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 """
 
+import time
 import unittest
 from pathlib import Path
 from functools import lru_cache
@@ -345,6 +346,19 @@ class TestGA(unittest.TestCase):
 
         self.assertAlmostEqual(abs(best[0]), 1.4142135623730951, 2)
         self.assertAlmostEqual(square_root2(best), error)
+
+    def test_time_limit(self):
+        guesses = np.zeros((100, 10))
+        tick = time.time()
+        sksearch.ga(lambda x: np.ones(len(x)),
+                    guesses,
+                    eta=1,
+                    max_iter=100000000,
+                    max_error=0,
+                    time_limit=5)
+
+        tock = time.time()
+        self.assertEqual(round(tock - tick), 5.0)
 
 
 class TestUniformCrossover(unittest.TestCase):
