@@ -15,6 +15,7 @@ from pathlib import Path
 from functools import lru_cache
 
 import numpy as np
+from joblib import Parallel
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import balanced_accuracy_score
@@ -361,10 +362,14 @@ class TestGA(unittest.TestCase):
         self.assertEqual(round(tock - tick), 5.0)
 
     def test_n_jobs_2(self):
+        """
+        Test genetic_algorithm with `n_jobs=2`
+
+        """
+
         rng = np.random.default_rng(0)
         shape = 100, 5
         guesses = np.full(shape, 16) * rng.random(shape)
-
         best, error = sksearch.ga(heart_disease_classifier, guesses,
                                   max_iter=200,
                                   p='auto',
@@ -376,10 +381,14 @@ class TestGA(unittest.TestCase):
         self.assertLessEqual(error, 0.63)
 
     def test_n_jobs_all_cores(self):
+        """
+        Test genetic_algorithm with `n_jobs=-1`
+
+        """
+
         rng = np.random.default_rng(0)
         shape = 100, 5
         guesses = np.full(shape, 16) * rng.random(shape)
-
         best, error = sksearch.ga(heart_disease_classifier, guesses,
                                   max_iter=200,
                                   p='auto',
@@ -387,6 +396,26 @@ class TestGA(unittest.TestCase):
                                   n_jobs=-1,
                                   rng=rng,
                                   max_error=0.63)
+
+        self.assertLessEqual(error, 0.63)
+
+    def test_n_jobs_parallel(self):
+        """
+        Test genetic_algorithm `n_jobs` with an instance of `joblib.Parallel`
+
+        """
+
+        rng = np.random.default_rng(0)
+        shape = 100, 5
+        guesses = np.full(shape, 16) * rng.random(shape)
+        with Parallel(n_jobs=2) as parallel:
+            best, error = sksearch.ga(heart_disease_classifier, guesses,
+                                      max_iter=200,
+                                      p='auto',
+                                      eta='auto',
+                                      n_jobs=parallel,
+                                      rng=rng,
+                                      max_error=0.63)
 
         self.assertLessEqual(error, 0.63)
 

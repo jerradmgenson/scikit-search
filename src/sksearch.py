@@ -257,7 +257,8 @@ def genetic_algorithm(loss, guesses,
       time_limit: Amount of time that genetic algorithm is allowed to
                   run in seconds. `-1` means no time limit. Default is `-1`.
       n_jobs: Number of processes to use when evaluating the loss function `-1`
-              creates a process for each available CPU. Set to `1` by default.
+              creates a process for each available CPU. May also be an instance
+              of `joblib.Parallel`. Default is `1`.
       p: The first learning rate used by genetic algorithm. Controls the
          frequency of mutations, i.e. the probability that each element in a
          "child" solution will be mutated. May be a float, 'auto', or
@@ -398,7 +399,10 @@ def genetic_algorithm(loss, guesses,
 
         return historical_best_solution, historical_min_error
 
-    if n_jobs == 1:
+    if isinstance(n_jobs, Parallel):
+        return ga_(n_jobs)
+
+    elif n_jobs == 1:
         return ga_(None)
 
     elif n_jobs == -1:
