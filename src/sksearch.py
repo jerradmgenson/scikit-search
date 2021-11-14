@@ -414,7 +414,7 @@ def genetic_algorithm(loss, guesses,
                 last_improvement += 1
 
             if verbose:
-                msg = f'iteration: {iteration}/{max_iter} error: {historical_min_error}'
+                msg = f'iteration: {iteration}/{max_iter} error: {historical_min_error} best solution: {historical_best_solution}'
                 print(msg)
 
             min_index = np.argmin(error)
