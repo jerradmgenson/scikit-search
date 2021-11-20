@@ -9,6 +9,8 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 """
 
+import os
+import sys
 import time
 import unittest
 from pathlib import Path
@@ -213,6 +215,73 @@ class TestPSO(unittest.TestCase):
 
         tock = time.time()
         self.assertEqual(round(tock - tick), 5.0)
+
+    def test_verbose(self):
+        guesses = np.zeros((100, 10))
+        try:
+            stdout = sys.stdout
+            sys.stdout = open(os.devnull, 'w')
+            sksearch.pso(lambda x: np.ones(len(x)),
+                         guesses,
+                         max_iter=2,
+                         max_error=0,
+                         verbose=True)
+
+        finally:
+            sys.stdout.close()
+            sys.stdout = stdout
+
+    def test_n_jobs_parallel(self):
+        """
+        Test pso `n_jobs` with an instance of `joblib.Parallel`
+
+        """
+
+        rng = np.random.default_rng(0)
+        shape = 100, 5
+        guesses = np.full(shape, 16) * rng.random(shape)
+        with Parallel(n_jobs=2) as parallel:
+            best, error = sksearch.pso(heart_disease_classifier, guesses,
+                                       c1=2,
+                                       c2=1,
+                                       vmax=12,
+                                       n_jobs=parallel,
+                                       rng=rng,
+                                       max_error=0.56)
+
+            self.assertLessEqual(error, 0.56)
+
+    def test_n_jobs_all_cores(self):
+        """
+        Test pso `n_jobs` with all cpu cores`
+
+        """
+
+        rng = np.random.default_rng(0)
+        shape = 100, 5
+        guesses = np.full(shape, 16) * rng.random(shape)
+        best, error = sksearch.pso(heart_disease_classifier, guesses,
+                                   c1=2,
+                                   c2=1,
+                                   vmax=12,
+                                   n_jobs=-1,
+                                   rng=rng,
+                                   max_error=0.56)
+
+        self.assertLessEqual(error, 0.56)
+
+    def test_n_jobs_neg_2_raises_value_error(self):
+        """
+        Test that calling pso with `n_jobs=-2` raises a ValueError
+
+        """
+
+        rng = np.random.default_rng(0)
+        shape = 100, 5
+        guesses = np.full(shape, 16) * rng.random(shape)
+        with self.assertRaises(ValueError):
+            sksearch.pso(heart_disease_classifier, guesses,
+                         n_jobs=-2)
 
 
 class TestGA(unittest.TestCase):
@@ -461,6 +530,35 @@ class TestGA(unittest.TestCase):
                                rng=rng)
 
         self.assertGreater(error, 0.04)
+
+    def test_verbose(self):
+        guesses = np.zeros((100, 10))
+        try:
+            stdout = sys.stdout
+            sys.stdout = open(os.devnull, 'w')
+            sksearch.ga(lambda x: np.ones(len(x)),
+                        guesses,
+                        eta=1,
+                        max_iter=5,
+                        max_error=0)
+
+        finally:
+            sys.stdout.close()
+            sys.stdout = stdout
+
+    def test_n_jobs_neg_2_raises_value_error(self):
+        """
+        Test that calling ga with `n_jobs=-2` raises a ValueError
+
+        """
+
+        rng = np.random.default_rng(0)
+        shape = 100, 5
+        guesses = np.full(shape, 16) * rng.random(shape)
+        with self.assertRaises(ValueError):
+            sksearch.ga(lambda x: np.ones(len(x)),
+                        guesses,
+                        n_jobs=-2)
 
 
 class TestUniformCrossover(unittest.TestCase):
