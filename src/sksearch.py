@@ -15,10 +15,49 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import os
 import math
-import time
+from time import time
+from itertools import repeat
+from functools import wraps
 
+import joblib
 import numpy as np
 from joblib import Memory, Parallel, delayed
+from dask.distributed import Future, Client
+
+
+def search_algorithm(search_func):
+    @wraps(search_func)
+    def new_func(*args,
+                 max_error=0,
+                 max_iter=1000,
+                 max_time=-1,
+                 n_jobs=1,
+                 client=None,
+                 rng=None,
+                 verbose=False,
+                 **kwargs):
+        start_time = time()
+        if client is None:
+            client = Client(n_workers=n_jobs)
+
+        if rng is None:
+            rng = np.random.default_rng()
+
+        for iteration, solution, error, msg in search_func(*args, client=client, rng=rng, **kwargs):
+            wall_time = time() - start_time
+            if max_time != -1 and wall_time > max_time:
+                return solution, error
+
+            if max_error > error:
+                return solution, error
+
+            if iteration > max_iter:
+                return solution, error
+
+            if verbose:
+                print(f'iteration: {iteration} wall time: {round(wall_time, 2)} error: {error} best solution: {solution} {msg}')
+
+    return new_func
 
 
 def particle_swarm_optimization(loss, guesses,
@@ -535,3 +574,247 @@ def random_restarts(loss, guesses, search_func, *args,
             best_error = error
 
     return best_solution, best_error
+
+
+@search_algorithm
+def mayfly_algorithm(loss, guesses,
+                     a1=1,
+                     a2=1.5,
+                     B=2,
+                     d=0.1,
+                     fl=0.1,
+                     client=None,
+                     rng=None):
+
+    guesses = np.array(guesses)
+    rng.shuffle(guesses)
+    sep = int(len(guesses) / 2)
+    males = guesses[:sep]
+    females = guesses[sep:]
+    male_velocities = np.zeros((len(males),) + males[0].shape)
+    female_velocities = np.zeros((len(females),) + females[0].shape)
+    male_errors, female_errors = evaluate_solutions(loss, client, males, females)
+    male_pbest = [m for m in zip(males, male_errors)]
+    gbest_index = np.argmin(male_errors)
+    gbest = males[gbest_index]
+    gbest_error = male_errors[gbest_index]
+    hbest, hbest_error = find_best((males, male_errors), (females, female_errors))
+    yield 0, hbest, hbest_error, 'initialization'
+    for iteration in infinite_count(1):
+        male_velocities = update_male_velocities(males,
+                                                 male_velocities,
+                                                 male_pbest,
+                                                 gbest,
+                                                 a1,
+                                                 a2,
+                                                 B,
+                                                 d,
+                                                 rng)
+
+        female_velocities = update_female_velocities(females,
+                                                     female_velocities,
+                                                     female_errors,
+                                                     males,
+                                                     male_errors,
+                                                     fl,
+                                                     a2,
+                                                     B,
+                                                     rng)
+
+        males = males + male_velocities
+        females = females + female_velocities
+        male_errors, female_errors = evaluate_solutions(loss, client, males, females)
+        gbest, gbest_error = find_best((males, male_errors),
+                                       hbest=(gbest, gbest_error))
+
+        hbest, hbest_error = find_best((males, male_errors),
+                                       (females, female_errors),
+                                       hbest=(hbest, hbest_error))
+
+        yield iteration, hbest, hbest_error, 'evaluate males and females'
+        sort_indices = np.argsort(male_errors)
+        males = males[sort_indices]
+        male_velocities = male_velocities[sort_indices]
+        male_errors = male_errors[sort_indices]
+        sort_indices = np.argsort(female_errors)
+        females = females[sort_indices]
+        female_velocities = female_velocities[sort_indices]
+        female_errors = female_errors[sort_indices]
+        offspring = mate_mayflies(males, male_errors, females, female_errors, rng)
+        rng.shuffle(offspring)
+        offspring_errors = evaluate_solutions(loss, client, offspring)
+        hbest, hbest_error = find_best((offspring, offspring_errors),
+                                       hbest=(hbest, hbest_error))
+
+        yield iteration, hbest, hbest_error, 'evaluate offspring'
+        male_offspring = offspring[:sep]
+        female_offspring = offspring[sep:]
+        male_offspring_errors = offspring_errors[:sep]
+        female_offspring_errors = offspring_errors[sep:]
+        males, male_velocities, male_errors, male_pbest = replace_worst(males,
+                                                                        male_velocities,
+                                                                        male_errors,
+                                                                        male_offspring,
+                                                                        male_offspring_errors,
+                                                                        male_pbest)
+
+        females, female_velocities, female_errors = replace_worst(females,
+                                                                  female_velocities,
+                                                                  female_errors,
+                                                                  female_offspring,
+                                                                  female_offspring_errors)
+
+        male_pbest = update_pbest(males, male_errors, male_pbest)
+
+
+ma = mayfly_algorithm
+
+
+def with_cache(func):
+    cache = dict()
+
+    @wraps(func)
+    def new_func(*args, **kwargs):
+        return func(*args, cache=cache, **kwargs)
+
+    return new_func
+
+
+@with_cache
+def evaluate_solutions(loss, client, solutions, *solution_groups, cache=None):
+    solution_groups = (solutions,) + solution_groups
+    futures = []
+    for solutions in solution_groups:
+        for solution in solutions:
+            solution_hash = joblib.hash(solution)
+            if solution_hash in cache:
+                futures.append(cache[solution_hash])
+
+            else:
+                futures.append(client.submit(loss, solution))
+
+    errors = []
+    for solutions in solution_groups:
+        for solution, future in zip(solutions, futures):
+            if isinstance(future, Future):
+                result = future.result()
+                cache[joblib.hash(solution)] = result
+                errors.append(result)
+
+            else:
+                errors.append(future)
+
+        futures = futures[len(solutions):]
+
+    errors = np.concatenate(errors)
+    if len(solution_groups) == 1:
+        return errors
+
+    error_groups = []
+    for solutions in solution_groups:
+        error_groups.append(errors[:len(solutions)])
+        errors = errors[len(solutions):]
+
+    return error_groups
+
+
+def update_male_velocities(males, velocities, pbest, gbest, a1, a2, B, d, rng):
+    pbest = np.array([p[0] for p in pbest])
+    gbest = gbest[0]
+    rp = np.sum(np.square(males - pbest), axis=1)
+    rg = np.sum(np.square(males - gbest), axis=1)
+    v2 = (velocities
+          + (a1 * np.exp(-B * rp)).reshape((-1, 1)) * (pbest - males)
+          + (a2 * np.exp(-B * rg)).reshape((-1, 1)) * (gbest - males))
+
+    return (v2
+            + d
+            * rng.random(velocities.shape)
+            * rng.choice([1, -1], size=velocities.shape))
+
+
+def update_female_velocities(females, velocities, female_errors, males, male_errors, fl, a2, B, rng):
+    rmf = np.sum(np.square(males - females), axis=1)
+    return np.where((female_errors > male_errors).reshape((-1, 1)),
+                    velocities + (a2 * np.exp(-B * rmf)).reshape((-1, 1)) * (males - females),
+                    velocities + fl * rng.random(velocities.shape) * rng.choice([1, -1], size=velocities.shape))
+
+
+def infinite_count(start=0):
+    for i, _ in enumerate(repeat(None)):
+        yield i + start
+
+
+def find_best(solutions_errors, *solution_groups, hbest=None):
+    if solution_groups:
+        solutions, errors = list(zip(*solution_groups))
+        solutions += (solutions_errors[0],)
+        errors += (solutions_errors[1],)
+        solutions = np.concatenate(solutions)
+        errors = np.concatenate(errors)
+
+    else:
+        solutions, errors = solutions_errors
+
+    if hbest:
+        solutions = np.concatenate([solutions, [hbest[0]]])
+        errors = np.concatenate([errors, [hbest[1]]])
+
+    min_index = np.argmin(errors)
+
+    return solutions[min_index], errors[min_index]
+
+
+def mate_mayflies(males, male_errors, females, female_errors, rng):
+    males = males[np.argsort(male_errors)]
+    females = females[np.argsort(female_errors)]
+    offspring = []
+    for male, female in zip(males, females):
+        offspring.extend(mayfly_crossover(male, female, rng))
+
+    return np.array(offspring)
+
+
+def mayfly_crossover(male, female, rng):
+    length = int(round(rng.random() * len(male)))
+    offspring1 = np.concatenate([male[:length], female[length:]])
+    offspring2 = np.concatenate([female[:length], male[length:]])
+
+    return offspring1, offspring2
+
+
+def replace_worst(solutions,
+                  velocities,
+                  errors,
+                  offspring,
+                  offspring_errors,
+                  pbest=None):
+    pop_size = len(solutions)
+    errors = np.concatenate([errors, offspring_errors])
+    sort_array = np.argsort(errors)
+    errors = errors[sort_array]
+    solutions = np.concatenate([solutions, offspring])[sort_array]
+    velocities = np.concatenate([velocities, np.zeros(offspring.shape)])[sort_array]
+    solutions = solutions[:pop_size]
+    velocities = velocities[:pop_size]
+    errors = errors[:pop_size]
+    if pbest:
+        pbest = pbest + list(zip(offspring, offspring_errors))
+        pbest = [p[1] for p in sorted(zip(sort_array, pbest))]
+        pbest = pbest[:pop_size]
+        return solutions, velocities, errors, pbest
+
+    else:
+        return solutions, velocities, errors
+
+
+def update_pbest(males, male_errors, pbest_seq):
+    new_pbest = []
+    for solution, error, pbest in zip(males, male_errors, pbest_seq):
+        if error < pbest[1]:
+            new_pbest.append((solution, error))
+
+        else:
+            new_pbest.append(pbest)
+
+    return new_pbest

@@ -633,5 +633,22 @@ class TestRandomRestarts(unittest.TestCase):
         self.assertAlmostEqual(square_root2(best), error)
 
 
+class TestMayflyAlgorithm(unittest.TestCase):
+    def test_square_root2(self):
+        rng = np.random.default_rng(1)
+        guess = np.full(1, 100 * rng.random())
+        solutions = random_solutions(guess, 100,
+                                     rng=rng,
+                                     eta=2)
+
+        best, error = sksearch.ma(square_root2, solutions,
+                                  max_iter=2000,
+                                  max_error=1e-3,
+                                  rng=rng)
+
+        self.assertAlmostEqual(abs(best[0]), 1.4142135623730951, 2)
+        self.assertAlmostEqual(square_root2(best), error)
+
+
 if __name__ == '__main__':
     unittest.main()
