@@ -720,6 +720,22 @@ class TestMA(unittest.TestCase):
         self.assertAlmostEqual(error, system_of_equations(np.array([best])))
         self.assertLessEqual(error, 0.009)
 
+    def test_gmax_is_none(self):
+        rng = np.random.default_rng(1)
+        guess = np.full(1, 100 * rng.random())
+        solutions = random_solutions(guess, 100,
+                                     rng=rng,
+                                     eta=2)
+
+        best, error = sksearch.ma(square_root2, solutions,
+                                  max_iter=2000,
+                                  max_error=1e-3,
+                                  gmax=None,
+                                  rng=rng)
+
+        self.assertAlmostEqual(abs(best[0]), 1.4142135623730951, 2)
+        self.assertAlmostEqual(square_root2(best), error)
+
 
 if __name__ == '__main__':
     unittest.main()
