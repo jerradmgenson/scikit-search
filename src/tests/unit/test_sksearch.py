@@ -296,6 +296,7 @@ class TestGA(unittest.TestCase):
                                   max_iter=2000,
                                   eta=0.5,
                                   max_error=1e-3,
+                                  verbose=True,
                                   rng=rng)
 
         self.assertAlmostEqual(best[0], 1.4142135623730951, 2)
@@ -644,10 +645,25 @@ class TestMayflyAlgorithm(unittest.TestCase):
         best, error = sksearch.ma(square_root2, solutions,
                                   max_iter=2000,
                                   max_error=1e-3,
+                                  verbose=True,
                                   rng=rng)
 
         self.assertAlmostEqual(abs(best[0]), 1.4142135623730951, 2)
         self.assertAlmostEqual(square_root2(best), error)
+
+    @unittest.skip
+    def test_system_of_equations(self):
+        rng = np.random.default_rng(1)
+        shape = 100, 3
+        guesses = np.full(shape, 100) * rng.random(shape)
+        guesses = np.where(rng.random(shape) > 0.5, guesses, -guesses)
+        best, error = sksearch.ma(system_of_equations, guesses,
+                                  max_iter=8000,
+                                  max_error=0.009,
+                                  rng=rng)
+
+        self.assertAlmostEqual(error, system_of_equations(np.array([best])))
+        self.assertLessEqual(error, 0.009)
 
 
 if __name__ == '__main__':

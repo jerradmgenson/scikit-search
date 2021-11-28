@@ -19,8 +19,8 @@ from time import time
 from itertools import repeat
 from functools import wraps
 
-import joblib
 import numpy as np
+from joblib import hash as joblib_hash
 from joblib import Memory, Parallel, delayed
 from dask.distributed import Future, Client
 
@@ -37,6 +37,9 @@ def search_algorithm(search_func):
                  verbose=False,
                  **kwargs):
         start_time = time()
+        if n_jobs == -1:
+            n_jobs = os.cpu_count()
+
         if client is None:
             client = Client(n_workers=n_jobs)
 
@@ -55,7 +58,7 @@ def search_algorithm(search_func):
                 return solution, error
 
             if verbose:
-                print(f'iteration: {iteration} wall time: {round(wall_time, 2)} error: {error} best solution: {solution} {msg}')
+                print(f'iteration: {iteration} wall time: {round(wall_time, 2)} error: {round(error, 2)} best solution: {solution} {msg}')
 
     return new_func
 
@@ -686,7 +689,7 @@ def evaluate_solutions(loss, client, solutions, *solution_groups, cache=None):
     futures = []
     for solutions in solution_groups:
         for solution in solutions:
-            solution_hash = joblib.hash(solution)
+            solution_hash = joblib_hash(solution)
             if solution_hash in cache:
                 futures.append(cache[solution_hash])
 
@@ -698,7 +701,7 @@ def evaluate_solutions(loss, client, solutions, *solution_groups, cache=None):
         for solution, future in zip(solutions, futures):
             if isinstance(future, Future):
                 result = future.result()
-                cache[joblib.hash(solution)] = result
+                cache[joblib_hash(solution)] = result
                 errors.append(result)
 
             else:
