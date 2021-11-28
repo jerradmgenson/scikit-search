@@ -547,6 +547,7 @@ def mayfly_algorithm(loss, guesses,
                      beta=2,
                      d=0.1,
                      fl=0.1,
+                     vmax=None,
                      client=None,
                      rng=None):
     """
@@ -566,6 +567,10 @@ def mayfly_algorithm(loss, guesses,
             to others. Default is 2.
       d: nupital dance coefficient. Default is 0.1.
       fl: random walk coefficient. Default is 0.1.
+      vmax: maximum velocity constraint. May be either a float, an array-like
+            object, 'auto', or None. If set to 'auto', vmax will be calculated
+            as `rand * (xmax - xmin). If set to None, vmax will not be checked.
+            Default is None.
       max_error: Maximum error score required for early stopping. Defaults to
                  `0`.
       max_iter: Maximum number of iterations before the function returns.
@@ -594,6 +599,11 @@ def mayfly_algorithm(loss, guesses,
     """
 
     guesses = np.array(guesses)
+    if vmax == 'auto':
+        vmax = rng.random((1, guesses.shape[1])) * (np.max(guesses, axis=0) - np.min(guesses, axis=0))
+
+    elif vmax is not None:
+        vmax = np.array(vmax).reshape((1, -1))
 
     # Separate guesses into male and female mayflies.
     rng.shuffle(guesses)
@@ -626,6 +636,7 @@ def mayfly_algorithm(loss, guesses,
                                                         a2,
                                                         beta,
                                                         d,
+                                                        vmax,
                                                         rng)
 
         female_velocities = mayfly.update_female_velocities(females,
@@ -636,6 +647,7 @@ def mayfly_algorithm(loss, guesses,
                                                             fl,
                                                             a2,
                                                             beta,
+                                                            vmax,
                                                             rng)
 
         # Update positions.

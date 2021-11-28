@@ -12,7 +12,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 import numpy as np
 
 
-def update_male_velocities(males, velocities, pbest, gbest, a1, a2, beta, d, rng):
+def update_male_velocities(males, velocities, pbest, gbest, a1, a2, beta, d, vmax, rng):
     """
     Update male velocities for mayfly algorithm.
 
@@ -29,13 +29,17 @@ def update_male_velocities(males, velocities, pbest, gbest, a1, a2, beta, d, rng
           + (a1 * np.exp(-beta * rp)).reshape((-1, 1)) * (pbest - males)
           + (a2 * np.exp(-beta * rg)).reshape((-1, 1)) * (gbest - males))
 
-    return (v2
-            + d
-            * rng.random(velocities.shape)
-            * rng.choice([1, -1], size=velocities.shape))
+    velocities = (v2
+                  + d
+                  * rng.random(velocities.shape)
+                  * rng.choice([1, -1], size=velocities.shape))
+
+    velocities = check_vmax(velocities, vmax)
+
+    return velocities
 
 
-def update_female_velocities(females, velocities, female_errors, males, male_errors, fl, a2, beta, rng):
+def update_female_velocities(females, velocities, female_errors, males, male_errors, fl, a2, beta, vmax, rng):
     """
     Update female velocities for mayfly algorithm.
 
@@ -45,9 +49,33 @@ def update_female_velocities(females, velocities, female_errors, males, male_err
     """
 
     rmf = np.sum(np.square(males - females), axis=1)
-    return np.where((female_errors > male_errors).reshape((-1, 1)),
-                    velocities + (a2 * np.exp(-beta * rmf)).reshape((-1, 1)) * (males - females),
-                    velocities + fl * rng.random(velocities.shape) * rng.choice([1, -1], size=velocities.shape))
+    velocities = np.where((female_errors > male_errors).reshape((-1, 1)),
+                          velocities + (a2 * np.exp(-beta * rmf)).reshape((-1, 1)) * (males - females),
+                          velocities + fl * rng.random(velocities.shape) * rng.choice([1, -1], size=velocities.shape))
+
+    velocities = check_vmax(velocities, vmax)
+
+    return velocities
+
+
+def check_vmax(velocities, vmax):
+    """
+    Check that the values in `velocities` do not exceed (+-) vmax.
+
+    """
+
+    if vmax is None:
+        return velocities
+
+    velocities = np.where(velocities < vmax,
+                          velocities,
+                          vmax)
+
+    velocities = np.where(velocities > -vmax,
+                          velocities,
+                          -vmax)
+
+    return velocities
 
 
 def breed_mayflies(males, male_errors, females, female_errors, rng):

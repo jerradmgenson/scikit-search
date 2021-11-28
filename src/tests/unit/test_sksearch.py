@@ -657,6 +657,7 @@ class TestMA(unittest.TestCase):
         best, error = sksearch.ma(system_of_equations, guesses,
                                   max_iter=8000,
                                   max_error=0.009,
+                                  vmax='auto',
                                   rng=rng)
 
         self.assertAlmostEqual(error, system_of_equations(np.array([best])))
@@ -690,6 +691,34 @@ class TestMA(unittest.TestCase):
                                   max_error=0.56)
 
         self.assertLessEqual(error, 0.56)
+
+    def test_scalar_vmax(self):
+        rng = np.random.default_rng(1)
+        shape = 100, 3
+        guesses = np.full(shape, 100) * rng.random(shape)
+        guesses = np.where(rng.random(shape) > 0.5, guesses, -guesses)
+        best, error = sksearch.ma(system_of_equations, guesses,
+                                  max_iter=8000,
+                                  max_error=0.009,
+                                  vmax=148,
+                                  rng=rng)
+
+        self.assertAlmostEqual(error, system_of_equations(np.array([best])))
+        self.assertLessEqual(error, 0.009)
+
+    def test_vector_vmax(self):
+        rng = np.random.default_rng(1)
+        shape = 100, 3
+        guesses = np.full(shape, 100) * rng.random(shape)
+        guesses = np.where(rng.random(shape) > 0.5, guesses, -guesses)
+        best, error = sksearch.ma(system_of_equations, guesses,
+                                  max_iter=8000,
+                                  max_error=0.009,
+                                  vmax=[46.44211451, 6.87179409, 148.86339668],
+                                  rng=rng)
+
+        self.assertAlmostEqual(error, system_of_equations(np.array([best])))
+        self.assertLessEqual(error, 0.009)
 
 
 if __name__ == '__main__':
