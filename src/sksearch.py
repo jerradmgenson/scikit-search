@@ -20,6 +20,7 @@ from time import time
 import numpy as np
 from joblib import Memory, Parallel, delayed
 
+import mayfly
 import searchlib as sl
 
 
@@ -617,25 +618,25 @@ def mayfly_algorithm(loss, guesses,
 
     yield 0, hbest, hbest_error, 'initialization'
     for iteration in sl.infinite_count(1):
-        male_velocities = update_male_velocities(males,
-                                                 male_velocities,
-                                                 male_pbest,
-                                                 gbest,
-                                                 a1,
-                                                 a2,
-                                                 B,
-                                                 d,
-                                                 rng)
+        male_velocities = mayfly.update_male_velocities(males,
+                                                        male_velocities,
+                                                        male_pbest,
+                                                        gbest,
+                                                        a1,
+                                                        a2,
+                                                        B,
+                                                        d,
+                                                        rng)
 
-        female_velocities = update_female_velocities(females,
-                                                     female_velocities,
-                                                     female_errors,
-                                                     males,
-                                                     male_errors,
-                                                     fl,
-                                                     a2,
-                                                     B,
-                                                     rng)
+        female_velocities = mayfly.update_female_velocities(females,
+                                                            female_velocities,
+                                                            female_errors,
+                                                            males,
+                                                            male_errors,
+                                                            fl,
+                                                            a2,
+                                                            B,
+                                                            rng)
 
         # Update positions.
         males = males + male_velocities
@@ -661,7 +662,12 @@ def mayfly_algorithm(loss, guesses,
         female_velocities = female_velocities[sort_indices]
         female_errors = female_errors[sort_indices]
 
-        offspring = breed_mayflies(males, male_errors, females, female_errors, rng)
+        offspring = mayfly.breed_mayflies(males,
+                                          male_errors,
+                                          females,
+                                          female_errors,
+                                          rng)
+
         rng.shuffle(offspring)
         offspring_errors = sl.evaluate_solutions(loss, client, offspring)
         hbest, hbest_error = sl.find_best((offspring, offspring_errors),
@@ -675,144 +681,20 @@ def mayfly_algorithm(loss, guesses,
         male_offspring_errors = offspring_errors[:sep]
         female_offspring_errors = offspring_errors[sep:]
 
-        males, male_velocities, male_errors, male_pbest = replace_worst(males,
-                                                                        male_velocities,
-                                                                        male_errors,
-                                                                        male_offspring,
-                                                                        male_offspring_errors,
-                                                                        male_pbest)
+        males, male_velocities, male_errors, male_pbest = mayfly.replace_worst(males,
+                                                                               male_velocities,
+                                                                               male_errors,
+                                                                               male_offspring,
+                                                                               male_offspring_errors,
+                                                                               male_pbest)
 
-        females, female_velocities, female_errors = replace_worst(females,
-                                                                  female_velocities,
-                                                                  female_errors,
-                                                                  female_offspring,
-                                                                  female_offspring_errors)
+        females, female_velocities, female_errors = mayfly.replace_worst(females,
+                                                                         female_velocities,
+                                                                         female_errors,
+                                                                         female_offspring,
+                                                                         female_offspring_errors)
 
-        male_pbest = update_pbest(males, male_errors, male_pbest)
+        male_pbest = mayfly.update_pbest(males, male_errors, male_pbest)
 
 
 ma = mayfly_algorithm
-
-
-def update_male_velocities(males, velocities, pbest, gbest, a1, a2, B, d, rng):
-    """
-    Update male velocities for mayfly algorithm.
-
-    Returns:
-      A new 2-D array of velocities.
-
-    """
-
-    pbest = np.array([p[0] for p in pbest])
-    gbest = gbest[0]
-    rp = np.sum(np.square(males - pbest), axis=1)
-    rg = np.sum(np.square(males - gbest), axis=1)
-    v2 = (velocities
-          + (a1 * np.exp(-B * rp)).reshape((-1, 1)) * (pbest - males)
-          + (a2 * np.exp(-B * rg)).reshape((-1, 1)) * (gbest - males))
-
-    return (v2
-            + d
-            * rng.random(velocities.shape)
-            * rng.choice([1, -1], size=velocities.shape))
-
-
-def update_female_velocities(females, velocities, female_errors, males, male_errors, fl, a2, B, rng):
-    """
-    Update female velocities for mayfly algorithm.
-
-    Returns:
-      A new 2-D array of velocities.
-
-    """
-
-    rmf = np.sum(np.square(males - females), axis=1)
-    return np.where((female_errors > male_errors).reshape((-1, 1)),
-                    velocities + (a2 * np.exp(-B * rmf)).reshape((-1, 1)) * (males - females),
-                    velocities + fl * rng.random(velocities.shape) * rng.choice([1, -1], size=velocities.shape))
-
-
-def breed_mayflies(males, male_errors, females, female_errors, rng):
-    """
-    Mating function for mayfly algorithm.
-
-    Returns:
-      A 2-D array of offspring mayflies.
-
-    """
-
-    males = males[np.argsort(male_errors)]
-    females = females[np.argsort(female_errors)]
-    offspring = []
-    for male, female in zip(males, females):
-        offspring.extend(mayfly_crossover(male, female, rng))
-
-    return np.array(offspring)
-
-
-def mayfly_crossover(male, female, rng):
-    """
-    Crossover operator for mayfly algorithm.
-
-    Returns:
-      A tuple of (offspring1, offspring2).
-
-    """
-
-    length = int(round(rng.random() * len(male)))
-    offspring1 = np.concatenate([male[:length], female[length:]])
-    offspring2 = np.concatenate([female[:length], male[length:]])
-
-    return offspring1, offspring2
-
-
-def replace_worst(solutions,
-                  velocities,
-                  errors,
-                  offspring,
-                  offspring_errors,
-                  pbest=None):
-    """
-    Replace solutions in `solutions` with better solutions from `offspring`.
-
-    Returns:
-      A tuple of (solutions, velocities, errors) with the len(solutions) best
-      solutions from `solutions` and `offspring`. If `pbest` is given, then
-      the returned tuple will be (solutions, velocities, errors, pbest).
-
-    """
-
-    pop_size = len(solutions)
-    errors = np.concatenate([errors, offspring_errors])
-    sort_array = np.argsort(errors)
-    errors = errors[sort_array]
-    solutions = np.concatenate([solutions, offspring])[sort_array]
-    velocities = np.concatenate([velocities, np.zeros(offspring.shape)])[sort_array]
-    solutions = solutions[:pop_size]
-    velocities = velocities[:pop_size]
-    errors = errors[:pop_size]
-    if pbest:
-        pbest = pbest + list(zip(offspring, offspring_errors))
-        pbest = [p[1] for p in sorted(zip(sort_array, pbest))]
-        pbest = pbest[:pop_size]
-        return solutions, velocities, errors, pbest
-
-    else:
-        return solutions, velocities, errors
-
-
-def update_pbest(males, male_errors, pbest_seq):
-    """
-    Update pbest values for male mayflies.
-
-    """
-
-    new_pbest = []
-    for solution, error, pbest in zip(males, male_errors, pbest_seq):
-        if error < pbest[1]:
-            new_pbest.append((solution, error))
-
-        else:
-            new_pbest.append(pbest)
-
-    return new_pbest
