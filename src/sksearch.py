@@ -40,25 +40,32 @@ def search_algorithm(search_func):
         if n_jobs == -1:
             n_jobs = os.cpu_count()
 
-        if client is None:
-            client = Client(n_workers=n_jobs)
-
         if rng is None:
             rng = np.random.default_rng()
 
-        for iteration, solution, error, msg in search_func(*args, client=client, rng=rng, **kwargs):
-            wall_time = time() - start_time
-            if max_time != -1 and wall_time > max_time:
-                return solution, error
+        owns_client = False
+        try:
+            if client is None:
+                client = Client(n_workers=n_jobs, set_as_default=False)
+                owns_client = True
 
-            if max_error > error:
-                return solution, error
+            for iteration, solution, error, msg in search_func(*args, client=client, rng=rng, **kwargs):
+                wall_time = time() - start_time
+                if max_time != -1 and wall_time > max_time:
+                    return solution, error
 
-            if iteration > max_iter:
-                return solution, error
+                if max_error > error:
+                    return solution, error
 
-            if verbose:
-                print(f'iteration: {iteration} wall time: {round(wall_time, 2)} error: {round(error, 2)} best solution: {solution} {msg}')
+                if iteration > max_iter:
+                    return solution, error
+
+                if verbose:
+                    print(f'iteration: {iteration} wall time: {round(wall_time, 2)} error: {round(error, 2)} best solution: {solution} {msg}')
+
+        finally:
+            if owns_client:
+                client.close()
 
     return new_func
 
@@ -698,7 +705,7 @@ def evaluate_solutions(loss, client, solutions, *solution_groups, cache=None):
                     futures.append(cache[solution_hash])
 
                 else:
-                    futures.append(client.submit(loss, solution))
+                    futures.append(client.submit(loss, np.atleast_2d(solution)))
 
         errors = []
         for solutions in solution_groups:
@@ -765,8 +772,8 @@ def find_best(solutions_errors, *solution_groups, hbest=None):
         solutions, errors = solutions_errors
 
     if hbest:
-        solutions = np.concatenate([solutions, [hbest[0]]])
-        errors = np.concatenate([errors, [hbest[1]]])
+        solutions = np.concatenate([[hbest[0]], solutions])
+        errors = np.concatenate([[hbest[1]], errors])
 
     min_index = np.argmin(errors)
 
