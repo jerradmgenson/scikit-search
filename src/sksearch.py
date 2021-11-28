@@ -550,6 +550,8 @@ def mayfly_algorithm(loss, guesses,
                      sigma='adaptive',
                      vmax=None,
                      gmax=2.5,
+                     p='adaptive',
+                     eta='adaptive',
                      max_iter=None,
                      client=None,
                      rng=None):
@@ -581,6 +583,16 @@ def mayfly_algorithm(loss, guesses,
             If None, gravity coefficient will not be used. If a float, the
             gravity coefficient will be reduced on each iteration.
             Default is 2.
+      p: Controls the frequency of mutations, i.e. the probability that each
+         element in a "child" solution will be mutated. May be a float, 'auto',
+          or 'adaptive'. If set to 'auto', a heuristic is used to set a value
+          for `p`. If set to 'adaptive', a heurstic is used to set an initial
+          value and shrinking is applied as the number of iterations increase.
+      eta: Controls the magnitude of mutations, where higher values of eta
+           correspond to higher magnitudes. May be a float, 'auto', or
+           'adaptive'. If set to 'auto', a heuristic is used to set a value for
+           `eta`. If set to 'adaptive', a heurstic is used to set an initial
+           value and shrinking is applied as the number of iterations increase.
       max_error: Maximum error score required for early stopping. Defaults to
                  `0`.
       max_iter: Maximum number of iterations before the function returns.
@@ -643,6 +655,35 @@ def mayfly_algorithm(loss, guesses,
 
     # Initialize sigma coefficients
     sigma0 = sigma
+
+    # Initialize eta
+    if eta == 'auto':
+        eta_upper = np.std(guesses, axis=0)
+        eta_lower = eta_upper * 0.1
+        eta0 = np.geomspace(eta_upper, eta_lower, max_iter)[int(max_iter / 2)]
+
+    elif eta == 'adaptive':
+        eta0 = np.std(guesses, axis=0)
+        eta_min = eta0 * 0.1
+        eta_space = np.linspace(eta0, eta_min, max_iter)
+
+    else:
+        eta0 = eta
+
+    # Initialize p
+    if p == 'auto':
+        p0 = 1 / guesses.shape[1]
+
+    elif p == 'adaptive':
+        p0 = 1
+        p_min = 1 / guesses.shape[1] / 2
+        p_space = np.linspace(p0, p_min, max_iter)
+
+    else:
+        p0 = p
+
+    p1 = p0
+    eta1 = eta0
 
     yield 0, hbest, hbest_error, 'initialization'
     for iteration in sl.infinite_count(1):
@@ -708,6 +749,13 @@ def mayfly_algorithm(loss, guesses,
                                           females,
                                           female_errors,
                                           rng)
+
+        offspring = np.array([default_mutate(a, p1, eta1, rng) for a in offspring])
+        if p == 'adaptive':
+            p1 = p_space[iteration-1]
+
+        if eta == 'adaptive':
+            eta1 = eta_space[iteration-1]
 
         rng.shuffle(offspring)
         offspring_errors = sl.evaluate_solutions(loss, client, offspring)
