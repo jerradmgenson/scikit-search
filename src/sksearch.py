@@ -16,58 +16,11 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 import os
 import math
 from time import time
-from itertools import repeat
-from functools import wraps
 
 import numpy as np
-from joblib import hash as joblib_hash
 from joblib import Memory, Parallel, delayed
-from dask.distributed import Future, Client
 
-
-def search_algorithm(search_func):
-    @wraps(search_func)
-    def new_func(*args,
-                 max_error=0,
-                 max_iter=1000,
-                 max_time=-1,
-                 n_jobs=1,
-                 client=None,
-                 rng=None,
-                 verbose=False,
-                 **kwargs):
-        start_time = time()
-        if n_jobs == -1:
-            n_jobs = os.cpu_count()
-
-        if rng is None:
-            rng = np.random.default_rng()
-
-        owns_client = False
-        try:
-            if client is None:
-                client = Client(n_workers=n_jobs, set_as_default=False)
-                owns_client = True
-
-            for iteration, solution, error, msg in search_func(*args, client=client, rng=rng, **kwargs):
-                wall_time = time() - start_time
-                if max_time != -1 and wall_time > max_time:
-                    return solution, error
-
-                if max_error > error:
-                    return solution, error
-
-                if iteration > max_iter:
-                    return solution, error
-
-                if verbose:
-                    print(f'iteration: {iteration} wall time: {round(wall_time, 2)} error: {round(error, 2)} best solution: {solution} {msg}')
-
-        finally:
-            if owns_client:
-                client.close()
-
-    return new_func
+import searchlib as sl
 
 
 def particle_swarm_optimization(loss, guesses,
@@ -586,7 +539,7 @@ def random_restarts(loss, guesses, search_func, *args,
     return best_solution, best_error
 
 
-@search_algorithm
+@sl.search_algorithm
 def mayfly_algorithm(loss, guesses,
                      a1=1,
                      a2=1.5,
@@ -652,7 +605,7 @@ def mayfly_algorithm(loss, guesses,
     female_velocities = np.zeros((len(females),) + females[0].shape)
 
     # Calculate initial errors.
-    male_errors, female_errors = evaluate_solutions(loss, client, males, females)
+    male_errors, female_errors = sl.evaluate_solutions(loss, client, males, females)
 
     # Calculate personal best (pbest), global best (gbest), and
     # historical best (hbest).
@@ -660,10 +613,10 @@ def mayfly_algorithm(loss, guesses,
     gbest_index = np.argmin(male_errors)
     gbest = males[gbest_index]
     gbest_error = male_errors[gbest_index]
-    hbest, hbest_error = find_best((males, male_errors), (females, female_errors))
+    hbest, hbest_error = sl.find_best((males, male_errors), (females, female_errors))
 
     yield 0, hbest, hbest_error, 'initialization'
-    for iteration in infinite_count(1):
+    for iteration in sl.infinite_count(1):
         male_velocities = update_male_velocities(males,
                                                  male_velocities,
                                                  male_pbest,
@@ -688,13 +641,13 @@ def mayfly_algorithm(loss, guesses,
         males = males + male_velocities
         females = females + female_velocities
 
-        male_errors, female_errors = evaluate_solutions(loss, client, males, females)
-        gbest, gbest_error = find_best((males, male_errors),
-                                       hbest=(gbest, gbest_error))
+        male_errors, female_errors = sl.evaluate_solutions(loss, client, males, females)
+        gbest, gbest_error = sl.find_best((males, male_errors),
+                                          hbest=(gbest, gbest_error))
 
-        hbest, hbest_error = find_best((males, male_errors),
-                                       (females, female_errors),
-                                       hbest=(hbest, hbest_error))
+        hbest, hbest_error = sl.find_best((males, male_errors),
+                                          (females, female_errors),
+                                          hbest=(hbest, hbest_error))
 
         yield iteration, hbest, hbest_error, 'evaluate parents'
 
@@ -710,9 +663,9 @@ def mayfly_algorithm(loss, guesses,
 
         offspring = breed_mayflies(males, male_errors, females, female_errors, rng)
         rng.shuffle(offspring)
-        offspring_errors = evaluate_solutions(loss, client, offspring)
-        hbest, hbest_error = find_best((offspring, offspring_errors),
-                                       hbest=(hbest, hbest_error))
+        offspring_errors = sl.evaluate_solutions(loss, client, offspring)
+        hbest, hbest_error = sl.find_best((offspring, offspring_errors),
+                                          hbest=(hbest, hbest_error))
 
         yield iteration, hbest, hbest_error, 'evaluate offspring'
 
@@ -739,90 +692,6 @@ def mayfly_algorithm(loss, guesses,
 
 
 ma = mayfly_algorithm
-
-
-def with_cache(func):
-    """
-    Add a cache dict to func. On subsequent calls to func, an additional
-    keyword argument `cache` will be passed that remains identical
-    between function calls.
-
-    """
-
-    cache = dict()
-
-    @wraps(func)
-    def new_func(*args, **kwargs):
-        return func(*args, cache=cache, **kwargs)
-
-    return new_func
-
-
-@with_cache
-def evaluate_solutions(loss, client, solutions, *solution_groups, cache=None):
-    """
-    Evaluate solutions using the given loss function.
-
-    Args:
-      loss: The loss function to be minimized. Accepts objects of the
-            same type as guesses and returns a 1-D ndarray of error scores,
-            where lower scores are better.
-      client: An instance of `dask.distributed.Client`.
-      solutions: A 2-D array-like object containing candidate solutions to the
-               search problem. Should be compatible with numpy.ndarray.
-      *solution_groups: Additional solutions that may be provided in distinct
-                        groups.
-
-    Returns:
-      A 1-D array of errors resulting from calling `loss` on `solutions`.
-      If `solution_groups` is provided, a list of 1-D error arrays will be
-      returned, where the length of the list equals len(solution_groups) + 1
-      (where the +1 is for `solutions`).
-
-    """
-
-    solution_groups = (solutions,) + solution_groups
-    if len(client.cluster.workers) == 1:
-        # If n_jobs == 1, it is more efficient to bypass dask and call
-        # the loss function directly.
-        errors = loss(np.concatenate(solution_groups))
-
-    else:
-        # If n_jobs > 1, use dask to distribute the jobs.
-        futures = []
-        for solutions in solution_groups:
-            for solution in solutions:
-                solution_hash = joblib_hash(solution)
-                if solution_hash in cache:
-                    futures.append(cache[solution_hash])
-
-                else:
-                    futures.append(client.submit(loss, np.atleast_2d(solution)))
-
-        errors = []
-        for solutions in solution_groups:
-            for solution, future in zip(solutions, futures):
-                if isinstance(future, Future):
-                    result = future.result()
-                    cache[joblib_hash(solution)] = result
-                    errors.append(result)
-
-                else:
-                    errors.append(future)
-
-            futures = futures[len(solutions):]
-
-        errors = np.concatenate(errors)
-
-    if len(solution_groups) == 1:
-        return errors
-
-    error_groups = []
-    for solutions in solution_groups:
-        error_groups.append(errors[:len(solutions)])
-        errors = errors[len(solutions):]
-
-    return error_groups
 
 
 def update_male_velocities(males, velocities, pbest, gbest, a1, a2, B, d, rng):
@@ -861,50 +730,6 @@ def update_female_velocities(females, velocities, female_errors, males, male_err
     return np.where((female_errors > male_errors).reshape((-1, 1)),
                     velocities + (a2 * np.exp(-B * rmf)).reshape((-1, 1)) * (males - females),
                     velocities + fl * rng.random(velocities.shape) * rng.choice([1, -1], size=velocities.shape))
-
-
-def infinite_count(start=0):
-    """
-    Returns an iterator that yields integers from `start` to infinity.
-
-    """
-
-    for i, _ in enumerate(repeat(None)):
-        yield i + start
-
-
-def find_best(solutions_errors, *solution_groups, hbest=None):
-    """
-    Find the best solution in the given solutions.
-
-    Args:
-      solutions_errors: A tuple of (solutions, errors).
-      *solution_groups: Additional tuples of (solutions, errors) passed
-                        in distinct groups.
-      hbest: A tuple of (best_solution, best_error).
-
-    Returns:
-      A tuple of (best_solution, best_error) from all the solutions provided.
-
-    """
-
-    if solution_groups:
-        solutions, errors = list(zip(*solution_groups))
-        solutions += (solutions_errors[0],)
-        errors += (solutions_errors[1],)
-        solutions = np.concatenate(solutions)
-        errors = np.concatenate(errors)
-
-    else:
-        solutions, errors = solutions_errors
-
-    if hbest:
-        solutions = np.concatenate([[hbest[0]], solutions])
-        errors = np.concatenate([[hbest[1]], errors])
-
-    min_index = np.argmin(errors)
-
-    return solutions[min_index], errors[min_index]
 
 
 def breed_mayflies(males, male_errors, females, female_errors, rng):
