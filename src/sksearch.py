@@ -544,7 +544,7 @@ def random_restarts(loss, guesses, search_func, *args,
 def mayfly_algorithm(loss, guesses,
                      a1=1,
                      a2=1.5,
-                     B=2,
+                     beta=2,
                      d=0.1,
                      fl=0.1,
                      client=None,
@@ -562,8 +562,8 @@ def mayfly_algorithm(loss, guesses,
           the cognitive component. Default is 1.
       a2: positive attraction constant used to scale the contribution of
           the social component. Default is 1.5.
-      B: fixed visibility coefficient used to limit a mayfly's visibility
-         to others. Default is 2.
+      beta: fixed visibility coefficient used to limit a mayfly's visibility
+            to others. Default is 2.
       d: nupital dance coefficient. Default is 0.1.
       fl: random walk coefficient. Default is 0.1.
       max_error: Maximum error score required for early stopping. Defaults to
@@ -624,7 +624,7 @@ def mayfly_algorithm(loss, guesses,
                                                         gbest,
                                                         a1,
                                                         a2,
-                                                        B,
+                                                        beta,
                                                         d,
                                                         rng)
 
@@ -635,7 +635,7 @@ def mayfly_algorithm(loss, guesses,
                                                             male_errors,
                                                             fl,
                                                             a2,
-                                                            B,
+                                                            beta,
                                                             rng)
 
         # Update positions.
