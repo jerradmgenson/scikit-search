@@ -673,6 +673,9 @@ class TestMA(unittest.TestCase):
                                   d=1,
                                   fl=1,
                                   sigma=1,
+                                  max_iter=1000,
+                                  p=0,
+                                  eta=0,
                                   rng=rng,
                                   max_error=0.56)
 
@@ -688,6 +691,9 @@ class TestMA(unittest.TestCase):
                                   d=1,
                                   fl=1,
                                   sigma=1,
+                                  max_iter=1000,
+                                  p=0,
+                                  eta=0,
                                   n_jobs=-1,
                                   rng=rng,
                                   max_error=0.56)
@@ -737,6 +743,22 @@ class TestMA(unittest.TestCase):
 
         self.assertAlmostEqual(abs(best[0]), 1.4142135623730951, 2)
         self.assertAlmostEqual(square_root2(best), error)
+
+    def test_auto_eta_and_p(self):
+        rng = np.random.default_rng(1)
+        shape = 100, 3
+        guesses = np.full(shape, 100) * rng.random(shape)
+        guesses = np.where(rng.random(shape) > 0.5, guesses, -guesses)
+        best, error = sksearch.ma(system_of_equations, guesses,
+                                  max_iter=8000,
+                                  max_error=0.009,
+                                  vmax='auto',
+                                  p='auto',
+                                  eta='auto',
+                                  rng=rng)
+
+        self.assertAlmostEqual(error, system_of_equations(np.array([best])))
+        self.assertLessEqual(error, 0.009)
 
 
 if __name__ == '__main__':
