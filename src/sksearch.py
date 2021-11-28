@@ -15,10 +15,13 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import os
 import math
-import time
+from time import time
 
 import numpy as np
 from joblib import Memory, Parallel, delayed
+
+import mayfly
+import searchlib as sl
 
 
 def particle_swarm_optimization(loss, guesses,
@@ -72,7 +75,7 @@ def particle_swarm_optimization(loss, guesses,
     """
 
     if time_limit != -1:
-        start_time = time.time()
+        start_time = time()
 
     memory = _setup_memory(memory)
     if memory:
@@ -122,7 +125,7 @@ def particle_swarm_optimization(loss, guesses,
             if early_stopping_rounds != -1 and last_improvement > early_stopping_rounds:
                 break
 
-            if time_limit != -1 and time.time() - start_time > time_limit:
+            if time_limit != -1 and time() - start_time > time_limit:
                 break
 
             pbest_filter = error < pbest_error
@@ -351,7 +354,7 @@ def genetic_algorithm(loss, guesses,
     """
 
     if time_limit != -1:
-        start_time = time.time()
+        start_time = time()
 
     memory = _setup_memory(memory)
     if memory:
@@ -426,7 +429,7 @@ def genetic_algorithm(loss, guesses,
             if early_stopping_rounds != -1 and last_improvement > early_stopping_rounds:
                 break
 
-            if time_limit != -1 and time.time() - start_time > time_limit:
+            if time_limit != -1 and time() - start_time > time_limit:
                 break
 
             selector = selection(old_population, error, rng)
@@ -535,3 +538,163 @@ def random_restarts(loss, guesses, search_func, *args,
             best_error = error
 
     return best_solution, best_error
+
+
+@sl.search_algorithm
+def mayfly_algorithm(loss, guesses,
+                     a1=1,
+                     a2=1.5,
+                     beta=2,
+                     d=0.1,
+                     fl=0.1,
+                     client=None,
+                     rng=None):
+    """
+    Minimize a loss function using mayfly optimization algorithm.
+
+    Args:
+      loss: The loss function to be minimized. Accepts objects of the
+            same type as guesses and returns a 1-D ndarray of error scores,
+            where lower scores are better.
+      guesses: A 2-D array-like object containing candidate solutions to the
+               search problem. Should be compatible with numpy.ndarray.
+      a1: positive attraction constant used to scale the contribution of
+          the cognitive component. Default is 1.
+      a2: positive attraction constant used to scale the contribution of
+          the social component. Default is 1.5.
+      beta: fixed visibility coefficient used to limit a mayfly's visibility
+            to others. Default is 2.
+      d: nupital dance coefficient. Default is 0.1.
+      fl: random walk coefficient. Default is 0.1.
+      max_error: Maximum error score required for early stopping. Defaults to
+                 `0`.
+      max_iter: Maximum number of iterations before the function returns.
+                Defaults to `1000`.
+      early_stopping_rounds: The number of iterations that are allowed to pass
+                             without improvement before the function returns.
+                             `-1` indicates no early stopping. Default is `-1`.
+      time_limit: Amount of time that genetic algorithm is allowed to
+                  run in seconds. `-1` means no time limit. Default is `-1`.
+      n_jobs: Number of processes to use when evaluating the loss function `-1`
+              creates a process for each available CPU. May also be an instance
+              of `joblib.Parallel`. Default is `1`.
+      client: An instance of `dask.distributed.Client`. Default is a new Client
+              that uses local CPUs for concurrency.
+      rng: An instance of numpy.random.Generator. If not given, a new Generator
+           will be created.
+      verbose: Set to `True` to print the error on each iteration. Default
+               is `False`.
+
+    Returns:
+      A tuple of (best_solution, error).
+
+    References:
+      - Zervoudakis, K. & Tsafarakis, S. (2020). A mayfly optimization algorithm.
+
+    """
+
+    guesses = np.array(guesses)
+
+    # Separate guesses into male and female mayflies.
+    rng.shuffle(guesses)
+    sep = int(len(guesses) / 2)
+    males = guesses[:sep]
+    females = guesses[sep:]
+
+    # Initialize mayfly velocities.
+    male_velocities = np.zeros((len(males),) + males[0].shape)
+    female_velocities = np.zeros((len(females),) + females[0].shape)
+
+    # Calculate initial errors.
+    male_errors, female_errors = sl.evaluate_solutions(loss, client, males, females)
+
+    # Calculate personal best (pbest), global best (gbest), and
+    # historical best (hbest).
+    male_pbest = [m for m in zip(males, male_errors)]
+    gbest_index = np.argmin(male_errors)
+    gbest = males[gbest_index]
+    gbest_error = male_errors[gbest_index]
+    hbest, hbest_error = sl.find_best((males, male_errors), (females, female_errors))
+
+    yield 0, hbest, hbest_error, 'initialization'
+    for iteration in sl.infinite_count(1):
+        male_velocities = mayfly.update_male_velocities(males,
+                                                        male_velocities,
+                                                        male_pbest,
+                                                        gbest,
+                                                        a1,
+                                                        a2,
+                                                        beta,
+                                                        d,
+                                                        rng)
+
+        female_velocities = mayfly.update_female_velocities(females,
+                                                            female_velocities,
+                                                            female_errors,
+                                                            males,
+                                                            male_errors,
+                                                            fl,
+                                                            a2,
+                                                            beta,
+                                                            rng)
+
+        # Update positions.
+        males = males + male_velocities
+        females = females + female_velocities
+
+        male_errors, female_errors = sl.evaluate_solutions(loss, client, males, females)
+        gbest, gbest_error = sl.find_best((males, male_errors),
+                                          hbest=(gbest, gbest_error))
+
+        hbest, hbest_error = sl.find_best((males, male_errors),
+                                          (females, female_errors),
+                                          hbest=(hbest, hbest_error))
+
+        yield iteration, hbest, hbest_error, 'evaluate parents'
+
+        # Sort male and females mayflies according to their errors.
+        sort_indices = np.argsort(male_errors)
+        males = males[sort_indices]
+        male_velocities = male_velocities[sort_indices]
+        male_errors = male_errors[sort_indices]
+        sort_indices = np.argsort(female_errors)
+        females = females[sort_indices]
+        female_velocities = female_velocities[sort_indices]
+        female_errors = female_errors[sort_indices]
+
+        offspring = mayfly.breed_mayflies(males,
+                                          male_errors,
+                                          females,
+                                          female_errors,
+                                          rng)
+
+        rng.shuffle(offspring)
+        offspring_errors = sl.evaluate_solutions(loss, client, offspring)
+        hbest, hbest_error = sl.find_best((offspring, offspring_errors),
+                                          hbest=(hbest, hbest_error))
+
+        yield iteration, hbest, hbest_error, 'evaluate offspring'
+
+        # Separate offspring into male and female mayflies.
+        male_offspring = offspring[:sep]
+        female_offspring = offspring[sep:]
+        male_offspring_errors = offspring_errors[:sep]
+        female_offspring_errors = offspring_errors[sep:]
+
+        males, male_velocities, male_errors, male_pbest = mayfly.replace_worst(males,
+                                                                               male_velocities,
+                                                                               male_errors,
+                                                                               male_offspring,
+                                                                               male_offspring_errors,
+                                                                               male_pbest)
+
+        females, female_velocities, female_errors = mayfly.replace_worst(females,
+                                                                         female_velocities,
+                                                                         female_errors,
+                                                                         female_offspring,
+                                                                         female_offspring_errors)
+
+        male_pbest = mayfly.update_pbest(males, male_errors, male_pbest)
+
+
+ma = mayfly_algorithm

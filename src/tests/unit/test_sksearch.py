@@ -633,5 +633,64 @@ class TestRandomRestarts(unittest.TestCase):
         self.assertAlmostEqual(square_root2(best), error)
 
 
+class TestMA(unittest.TestCase):
+    def test_square_root2(self):
+        rng = np.random.default_rng(1)
+        guess = np.full(1, 100 * rng.random())
+        solutions = random_solutions(guess, 100,
+                                     rng=rng,
+                                     eta=2)
+
+        best, error = sksearch.ma(square_root2, solutions,
+                                  max_iter=2000,
+                                  max_error=1e-3,
+                                  rng=rng)
+
+        self.assertAlmostEqual(abs(best[0]), 1.4142135623730951, 2)
+        self.assertAlmostEqual(square_root2(best), error)
+
+    def test_system_of_equations(self):
+        rng = np.random.default_rng(1)
+        shape = 100, 3
+        guesses = np.full(shape, 100) * rng.random(shape)
+        guesses = np.where(rng.random(shape) > 0.5, guesses, -guesses)
+        best, error = sksearch.ma(system_of_equations, guesses,
+                                  max_iter=8000,
+                                  max_error=0.009,
+                                  rng=rng)
+
+        self.assertAlmostEqual(error, system_of_equations(np.array([best])))
+        self.assertLessEqual(error, 0.009)
+
+    def test_decision_tree(self):
+        rng = np.random.default_rng(1)
+        shape = 100, 5
+        guesses = np.full(shape, 4) * rng.random(shape)
+        guesses = np.where(rng.random(shape) > 0.5, guesses, -guesses)
+
+        best, error = sksearch.ma(heart_disease_classifier, guesses,
+                                  d=1,
+                                  fl=1,
+                                  rng=rng,
+                                  max_error=0.56)
+
+        self.assertLessEqual(error, 0.56)
+
+    def test_decision_tree_distributed(self):
+        rng = np.random.default_rng(1)
+        shape = 100, 5
+        guesses = np.full(shape, 4) * rng.random(shape)
+        guesses = np.where(rng.random(shape) > 0.5, guesses, -guesses)
+
+        best, error = sksearch.ma(heart_disease_classifier, guesses,
+                                  d=1,
+                                  fl=1,
+                                  n_jobs=-1,
+                                  rng=rng,
+                                  max_error=0.56)
+
+        self.assertLessEqual(error, 0.56)
+
+
 if __name__ == '__main__':
     unittest.main()
