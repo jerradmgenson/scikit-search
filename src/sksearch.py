@@ -634,7 +634,7 @@ def mayfly_algorithm(loss, guesses,
                                        (females, female_errors),
                                        hbest=(hbest, hbest_error))
 
-        yield iteration, hbest, hbest_error, 'evaluate males and females'
+        yield iteration, hbest, hbest_error, 'evaluate parents'
         sort_indices = np.argsort(male_errors)
         males = males[sort_indices]
         male_velocities = male_velocities[sort_indices]
@@ -686,30 +686,35 @@ def with_cache(func):
 @with_cache
 def evaluate_solutions(loss, client, solutions, *solution_groups, cache=None):
     solution_groups = (solutions,) + solution_groups
-    futures = []
-    for solutions in solution_groups:
-        for solution in solutions:
-            solution_hash = joblib_hash(solution)
-            if solution_hash in cache:
-                futures.append(cache[solution_hash])
+    if len(client.cluster.workers) == 1:
+        errors = loss(np.concatenate(solution_groups))
 
-            else:
-                futures.append(client.submit(loss, solution))
+    else:
+        futures = []
+        for solutions in solution_groups:
+            for solution in solutions:
+                solution_hash = joblib_hash(solution)
+                if solution_hash in cache:
+                    futures.append(cache[solution_hash])
 
-    errors = []
-    for solutions in solution_groups:
-        for solution, future in zip(solutions, futures):
-            if isinstance(future, Future):
-                result = future.result()
-                cache[joblib_hash(solution)] = result
-                errors.append(result)
+                else:
+                    futures.append(client.submit(loss, solution))
 
-            else:
-                errors.append(future)
+        errors = []
+        for solutions in solution_groups:
+            for solution, future in zip(solutions, futures):
+                if isinstance(future, Future):
+                    result = future.result()
+                    cache[joblib_hash(solution)] = result
+                    errors.append(result)
 
-        futures = futures[len(solutions):]
+                else:
+                    errors.append(future)
 
-    errors = np.concatenate(errors)
+            futures = futures[len(solutions):]
+
+        errors = np.concatenate(errors)
+
     if len(solution_groups) == 1:
         return errors
 

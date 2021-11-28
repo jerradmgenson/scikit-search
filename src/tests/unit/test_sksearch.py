@@ -296,7 +296,6 @@ class TestGA(unittest.TestCase):
                                   max_iter=2000,
                                   eta=0.5,
                                   max_error=1e-3,
-                                  verbose=True,
                                   rng=rng)
 
         self.assertAlmostEqual(best[0], 1.4142135623730951, 2)
@@ -645,7 +644,6 @@ class TestMayflyAlgorithm(unittest.TestCase):
         best, error = sksearch.ma(square_root2, solutions,
                                   max_iter=2000,
                                   max_error=1e-3,
-                                  verbose=True,
                                   rng=rng)
 
         self.assertAlmostEqual(abs(best[0]), 1.4142135623730951, 2)
