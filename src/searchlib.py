@@ -65,7 +65,11 @@ def search_algorithm(search_func):
                 client = Client(n_workers=n_jobs, set_as_default=False)
                 owns_client = True
 
-            for iteration, solution, error, msg in search_func(*args, client=client, rng=rng, **kwargs):
+            for iteration, solution, error, msg in search_func(*args,
+                                                               max_iter=max_iter,
+                                                               client=client,
+                                                               rng=rng,
+                                                               **kwargs):
                 wall_time = time() - start_time
                 if max_time != -1 and wall_time > max_time:
                     return solution, error

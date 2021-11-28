@@ -548,6 +548,8 @@ def mayfly_algorithm(loss, guesses,
                      d=0.1,
                      fl=0.1,
                      vmax=None,
+                     gmax=2.5,
+                     max_iter=None,
                      client=None,
                      rng=None):
     """
@@ -571,6 +573,10 @@ def mayfly_algorithm(loss, guesses,
             object, 'auto', or None. If set to 'auto', vmax will be calculated
             as `rand * (xmax - xmin). If set to None, vmax will not be checked.
             Default is None.
+      gmax: maximum value for the gravity coefficient. May be a float or None.
+            If None, gravity coefficient will not be used. If a float, the
+            gravity coefficient will be reduced on each iteration.
+            Default is 2.
       max_error: Maximum error score required for early stopping. Defaults to
                  `0`.
       max_iter: Maximum number of iterations before the function returns.
@@ -626,6 +632,11 @@ def mayfly_algorithm(loss, guesses,
     gbest_error = male_errors[gbest_index]
     hbest, hbest_error = sl.find_best((males, male_errors), (females, female_errors))
 
+    # Initialize gravity coefficients
+    g = gmax
+    if g is not None:
+        gmin = gmax * 0.1
+
     yield 0, hbest, hbest_error, 'initialization'
     for iteration in sl.infinite_count(1):
         male_velocities = mayfly.update_male_velocities(males,
@@ -637,6 +648,7 @@ def mayfly_algorithm(loss, guesses,
                                                         beta,
                                                         d,
                                                         vmax,
+                                                        g,
                                                         rng)
 
         female_velocities = mayfly.update_female_velocities(females,
@@ -648,7 +660,12 @@ def mayfly_algorithm(loss, guesses,
                                                             a2,
                                                             beta,
                                                             vmax,
+                                                            g,
                                                             rng)
+
+        if g is not None:
+            # Reduce gravity coefficient.
+            g = gmax - (gmax - gmin) / max_iter * iteration
 
         # Update positions.
         males = males + male_velocities
