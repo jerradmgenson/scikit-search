@@ -121,7 +121,7 @@ def particle_swarm_optimization(loss, guesses,
     """
 
     if time_limit != -1:
-        start_time = time.time()
+        start_time = time()
 
     memory = _setup_memory(memory)
     if memory:
@@ -171,7 +171,7 @@ def particle_swarm_optimization(loss, guesses,
             if early_stopping_rounds != -1 and last_improvement > early_stopping_rounds:
                 break
 
-            if time_limit != -1 and time.time() - start_time > time_limit:
+            if time_limit != -1 and time() - start_time > time_limit:
                 break
 
             pbest_filter = error < pbest_error
@@ -400,7 +400,7 @@ def genetic_algorithm(loss, guesses,
     """
 
     if time_limit != -1:
-        start_time = time.time()
+        start_time = time()
 
     memory = _setup_memory(memory)
     if memory:
@@ -475,7 +475,7 @@ def genetic_algorithm(loss, guesses,
             if early_stopping_rounds != -1 and last_improvement > early_stopping_rounds:
                 break
 
-            if time_limit != -1 and time.time() - start_time > time_limit:
+            if time_limit != -1 and time() - start_time > time_limit:
                 break
 
             selector = selection(old_population, error, rng)
@@ -595,20 +595,73 @@ def mayfly_algorithm(loss, guesses,
                      fl=0.1,
                      client=None,
                      rng=None):
+    """
+    Minimize a loss function using mayfly optimization algorithm.
+
+    Args:
+      loss: The loss function to be minimized. Accepts objects of the
+            same type as guesses and returns a 1-D ndarray of error scores,
+            where lower scores are better.
+      guesses: A 2-D array-like object containing candidate solutions to the
+               search problem. Should be compatible with numpy.ndarray.
+      a1: positive attraction constant used to scale the contribution of
+          the cognitive component. Default is 1.
+      a2: positive attraction constant used to scale the contribution of
+          the social component. Default is 1.5.
+      B: fixed visibility coefficient used to limit a mayfly's visibility
+         to others. Default is 2.
+      d: nupital dance coefficient. Default is 0.1.
+      fl: random walk coefficient. Default is 0.1.
+      max_error: Maximum error score required for early stopping. Defaults to
+                 `0`.
+      max_iter: Maximum number of iterations before the function returns.
+                Defaults to `1000`.
+      early_stopping_rounds: The number of iterations that are allowed to pass
+                             without improvement before the function returns.
+                             `-1` indicates no early stopping. Default is `-1`.
+      time_limit: Amount of time that genetic algorithm is allowed to
+                  run in seconds. `-1` means no time limit. Default is `-1`.
+      n_jobs: Number of processes to use when evaluating the loss function `-1`
+              creates a process for each available CPU. May also be an instance
+              of `joblib.Parallel`. Default is `1`.
+      client: An instance of `dask.distributed.Client`. Default is a new Client
+              that uses local CPUs for concurrency.
+      rng: An instance of numpy.random.Generator. If not given, a new Generator
+           will be created.
+      verbose: Set to `True` to print the error on each iteration. Default
+               is `False`.
+
+    Returns:
+      A tuple of (best_solution, error).
+
+    References:
+      - Zervoudakis, K. & Tsafarakis, S. (2020). A mayfly optimization algorithm.
+
+    """
 
     guesses = np.array(guesses)
+
+    # Separate guesses into male and female mayflies.
     rng.shuffle(guesses)
     sep = int(len(guesses) / 2)
     males = guesses[:sep]
     females = guesses[sep:]
+
+    # Initialize mayfly velocities.
     male_velocities = np.zeros((len(males),) + males[0].shape)
     female_velocities = np.zeros((len(females),) + females[0].shape)
+
+    # Calculate initial errors.
     male_errors, female_errors = evaluate_solutions(loss, client, males, females)
+
+    # Calculate personal best (pbest), global best (gbest), and
+    # historical best (hbest).
     male_pbest = [m for m in zip(males, male_errors)]
     gbest_index = np.argmin(male_errors)
     gbest = males[gbest_index]
     gbest_error = male_errors[gbest_index]
     hbest, hbest_error = find_best((males, male_errors), (females, female_errors))
+
     yield 0, hbest, hbest_error, 'initialization'
     for iteration in infinite_count(1):
         male_velocities = update_male_velocities(males,
@@ -631,8 +684,10 @@ def mayfly_algorithm(loss, guesses,
                                                      B,
                                                      rng)
 
+        # Update positions.
         males = males + male_velocities
         females = females + female_velocities
+
         male_errors, female_errors = evaluate_solutions(loss, client, males, females)
         gbest, gbest_error = find_best((males, male_errors),
                                        hbest=(gbest, gbest_error))
@@ -642,6 +697,8 @@ def mayfly_algorithm(loss, guesses,
                                        hbest=(hbest, hbest_error))
 
         yield iteration, hbest, hbest_error, 'evaluate parents'
+
+        # Sort male and females mayflies according to their errors.
         sort_indices = np.argsort(male_errors)
         males = males[sort_indices]
         male_velocities = male_velocities[sort_indices]
@@ -650,17 +707,21 @@ def mayfly_algorithm(loss, guesses,
         females = females[sort_indices]
         female_velocities = female_velocities[sort_indices]
         female_errors = female_errors[sort_indices]
-        offspring = mate_mayflies(males, male_errors, females, female_errors, rng)
+
+        offspring = breed_mayflies(males, male_errors, females, female_errors, rng)
         rng.shuffle(offspring)
         offspring_errors = evaluate_solutions(loss, client, offspring)
         hbest, hbest_error = find_best((offspring, offspring_errors),
                                        hbest=(hbest, hbest_error))
 
         yield iteration, hbest, hbest_error, 'evaluate offspring'
+
+        # Separate offspring into male and female mayflies.
         male_offspring = offspring[:sep]
         female_offspring = offspring[sep:]
         male_offspring_errors = offspring_errors[:sep]
         female_offspring_errors = offspring_errors[sep:]
+
         males, male_velocities, male_errors, male_pbest = replace_worst(males,
                                                                         male_velocities,
                                                                         male_errors,
@@ -681,6 +742,13 @@ ma = mayfly_algorithm
 
 
 def with_cache(func):
+    """
+    Add a cache dict to func. On subsequent calls to func, an additional
+    keyword argument `cache` will be passed that remains identical
+    between function calls.
+
+    """
+
     cache = dict()
 
     @wraps(func)
@@ -692,11 +760,35 @@ def with_cache(func):
 
 @with_cache
 def evaluate_solutions(loss, client, solutions, *solution_groups, cache=None):
+    """
+    Evaluate solutions using the given loss function.
+
+    Args:
+      loss: The loss function to be minimized. Accepts objects of the
+            same type as guesses and returns a 1-D ndarray of error scores,
+            where lower scores are better.
+      client: An instance of `dask.distributed.Client`.
+      solutions: A 2-D array-like object containing candidate solutions to the
+               search problem. Should be compatible with numpy.ndarray.
+      *solution_groups: Additional solutions that may be provided in distinct
+                        groups.
+
+    Returns:
+      A 1-D array of errors resulting from calling `loss` on `solutions`.
+      If `solution_groups` is provided, a list of 1-D error arrays will be
+      returned, where the length of the list equals len(solution_groups) + 1
+      (where the +1 is for `solutions`).
+
+    """
+
     solution_groups = (solutions,) + solution_groups
     if len(client.cluster.workers) == 1:
+        # If n_jobs == 1, it is more efficient to bypass dask and call
+        # the loss function directly.
         errors = loss(np.concatenate(solution_groups))
 
     else:
+        # If n_jobs > 1, use dask to distribute the jobs.
         futures = []
         for solutions in solution_groups:
             for solution in solutions:
@@ -734,6 +826,14 @@ def evaluate_solutions(loss, client, solutions, *solution_groups, cache=None):
 
 
 def update_male_velocities(males, velocities, pbest, gbest, a1, a2, B, d, rng):
+    """
+    Update male velocities for mayfly algorithm.
+
+    Returns:
+      A new 2-D array of velocities.
+
+    """
+
     pbest = np.array([p[0] for p in pbest])
     gbest = gbest[0]
     rp = np.sum(np.square(males - pbest), axis=1)
@@ -749,6 +849,14 @@ def update_male_velocities(males, velocities, pbest, gbest, a1, a2, B, d, rng):
 
 
 def update_female_velocities(females, velocities, female_errors, males, male_errors, fl, a2, B, rng):
+    """
+    Update female velocities for mayfly algorithm.
+
+    Returns:
+      A new 2-D array of velocities.
+
+    """
+
     rmf = np.sum(np.square(males - females), axis=1)
     return np.where((female_errors > male_errors).reshape((-1, 1)),
                     velocities + (a2 * np.exp(-B * rmf)).reshape((-1, 1)) * (males - females),
@@ -756,11 +864,30 @@ def update_female_velocities(females, velocities, female_errors, males, male_err
 
 
 def infinite_count(start=0):
+    """
+    Returns an iterator that yields integers from `start` to infinity.
+
+    """
+
     for i, _ in enumerate(repeat(None)):
         yield i + start
 
 
 def find_best(solutions_errors, *solution_groups, hbest=None):
+    """
+    Find the best solution in the given solutions.
+
+    Args:
+      solutions_errors: A tuple of (solutions, errors).
+      *solution_groups: Additional tuples of (solutions, errors) passed
+                        in distinct groups.
+      hbest: A tuple of (best_solution, best_error).
+
+    Returns:
+      A tuple of (best_solution, best_error) from all the solutions provided.
+
+    """
+
     if solution_groups:
         solutions, errors = list(zip(*solution_groups))
         solutions += (solutions_errors[0],)
@@ -780,7 +907,15 @@ def find_best(solutions_errors, *solution_groups, hbest=None):
     return solutions[min_index], errors[min_index]
 
 
-def mate_mayflies(males, male_errors, females, female_errors, rng):
+def breed_mayflies(males, male_errors, females, female_errors, rng):
+    """
+    Mating function for mayfly algorithm.
+
+    Returns:
+      A 2-D array of offspring mayflies.
+
+    """
+
     males = males[np.argsort(male_errors)]
     females = females[np.argsort(female_errors)]
     offspring = []
@@ -791,6 +926,14 @@ def mate_mayflies(males, male_errors, females, female_errors, rng):
 
 
 def mayfly_crossover(male, female, rng):
+    """
+    Crossover operator for mayfly algorithm.
+
+    Returns:
+      A tuple of (offspring1, offspring2).
+
+    """
+
     length = int(round(rng.random() * len(male)))
     offspring1 = np.concatenate([male[:length], female[length:]])
     offspring2 = np.concatenate([female[:length], male[length:]])
@@ -804,6 +947,16 @@ def replace_worst(solutions,
                   offspring,
                   offspring_errors,
                   pbest=None):
+    """
+    Replace solutions in `solutions` with better solutions from `offspring`.
+
+    Returns:
+      A tuple of (solutions, velocities, errors) with the len(solutions) best
+      solutions from `solutions` and `offspring`. If `pbest` is given, then
+      the returned tuple will be (solutions, velocities, errors, pbest).
+
+    """
+
     pop_size = len(solutions)
     errors = np.concatenate([errors, offspring_errors])
     sort_array = np.argsort(errors)
@@ -824,6 +977,11 @@ def replace_worst(solutions,
 
 
 def update_pbest(males, male_errors, pbest_seq):
+    """
+    Update pbest values for male mayflies.
+
+    """
+
     new_pbest = []
     for solution, error, pbest in zip(males, male_errors, pbest_seq):
         if error < pbest[1]:
