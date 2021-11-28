@@ -672,6 +672,7 @@ class TestMA(unittest.TestCase):
         best, error = sksearch.ma(heart_disease_classifier, guesses,
                                   d=1,
                                   fl=1,
+                                  sigma=1,
                                   rng=rng,
                                   max_error=0.56)
 
@@ -686,6 +687,7 @@ class TestMA(unittest.TestCase):
         best, error = sksearch.ma(heart_disease_classifier, guesses,
                                   d=1,
                                   fl=1,
+                                  sigma=1,
                                   n_jobs=-1,
                                   rng=rng,
                                   max_error=0.56)

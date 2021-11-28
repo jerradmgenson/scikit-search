@@ -547,6 +547,7 @@ def mayfly_algorithm(loss, guesses,
                      beta=2,
                      d=0.1,
                      fl=0.1,
+                     sigma='adaptive',
                      vmax=None,
                      gmax=2.5,
                      max_iter=None,
@@ -567,8 +568,11 @@ def mayfly_algorithm(loss, guesses,
           the social component. Default is 1.5.
       beta: fixed visibility coefficient used to limit a mayfly's visibility
             to others. Default is 2.
-      d: nupital dance coefficient. Default is 0.1.
-      fl: random walk coefficient. Default is 0.1.
+      d: nupital dance coefficient in range (0, 1). Default is 0.1.
+      fl: random walk coefficient in range (0, 1). . Default is 0.1.
+      sigma: reduction coefficient for d and fl in range (0, 1).
+             Can also be 'adaptive', in which case sigma is calculated as
+             (max_iter - curr_iter) / max_iter. Default is 'adaptive'.
       vmax: maximum velocity constraint. May be either a float, an array-like
             object, 'auto', or None. If set to 'auto', vmax will be calculated
             as `rand * (xmax - xmin). If set to None, vmax will not be checked.
@@ -637,6 +641,9 @@ def mayfly_algorithm(loss, guesses,
     if g is not None:
         gmin = gmax * 0.1
 
+    # Initialize sigma coefficients
+    sigma0 = sigma
+
     yield 0, hbest, hbest_error, 'initialization'
     for iteration in sl.infinite_count(1):
         male_velocities = mayfly.update_male_velocities(males,
@@ -651,6 +658,10 @@ def mayfly_algorithm(loss, guesses,
                                                         g,
                                                         rng)
 
+        if sigma0 == 'adaptive':
+            sigma = (max_iter - iteration + 1) / max_iter
+
+        d = d * sigma
         female_velocities = mayfly.update_female_velocities(females,
                                                             female_velocities,
                                                             female_errors,
@@ -663,6 +674,7 @@ def mayfly_algorithm(loss, guesses,
                                                             g,
                                                             rng)
 
+        fl = fl * sigma
         if g is not None:
             # Reduce gravity coefficient.
             g = gmax - (gmax - gmin) / max_iter * iteration
