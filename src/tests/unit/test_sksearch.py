@@ -441,7 +441,7 @@ class TestGA(unittest.TestCase):
                     eta=1,
                     max_iter=100000000,
                     max_error=0,
-                    time_limit=5)
+                    max_time=5)
 
         tock = time.time()
         self.assertEqual(round(tock - tick), 5.0)
@@ -481,26 +481,6 @@ class TestGA(unittest.TestCase):
                                   n_jobs=-1,
                                   rng=rng,
                                   max_error=0.63)
-
-        self.assertLessEqual(error, 0.63)
-
-    def test_n_jobs_parallel(self):
-        """
-        Test genetic_algorithm `n_jobs` with an instance of `joblib.Parallel`
-
-        """
-
-        rng = np.random.default_rng(0)
-        shape = 100, 5
-        guesses = np.full(shape, 16) * rng.random(shape)
-        with Parallel(n_jobs=2) as parallel:
-            best, error = sksearch.ga(heart_disease_classifier, guesses,
-                                      max_iter=200,
-                                      p='auto',
-                                      eta='auto',
-                                      n_jobs=parallel,
-                                      rng=rng,
-                                      max_error=0.63)
 
         self.assertLessEqual(error, 0.63)
 

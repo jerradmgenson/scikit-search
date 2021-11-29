@@ -13,12 +13,9 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 """
 
-import os
 import math
-from time import time
 
 import numpy as np
-from joblib import Parallel, delayed
 
 import mayflies
 import searchlib as sl
@@ -109,19 +106,16 @@ def particle_swarm_optimization(loss, guesses,
 pso = particle_swarm_optimization
 
 
+@sl.search_algorithm
 def genetic_algorithm(loss, guesses,
-                      max_error=0,
-                      max_iter=1000,
-                      early_stopping_rounds=-1,
-                      time_limit=-1,
-                      n_jobs=1,
-                      memory='default',
-                      rng=None,
-                      verbose=False,
                       p='auto',
                       eta='auto',
                       adaptive_population=False,
                       elitism=False,
+                      max_iter=1000,
+                      n_jobs=1,
+                      client=None,
+                      rng=None,
                       crossover=sl.uniform_crossover,
                       mutate=sl.default_mutate,
                       selection=sl.fitness_proportional_selection):
@@ -146,10 +140,8 @@ def genetic_algorithm(loss, guesses,
       n_jobs: Number of processes to use when evaluating the loss function `-1`
               creates a process for each available CPU. May also be an instance
               of `joblib.Parallel`. Default is `1`.
-      memory: Location of joblib cache on the filesystem. May a string, a
-              `Path` object, an instance of `joblib.Memory`, None, or
-              'default', which uses a (generally good) location specific to
-              your operating system.
+      client: An instance of `dask.distributed.Client`. Default is a new Client
+              that uses local CPUs for concurrency.
       p: The first learning rate used by genetic algorithm. Controls the
          frequency of mutations, i.e. the probability that each element in a
          "child" solution will be mutated. May be a float, 'auto', or
@@ -190,130 +182,77 @@ def genetic_algorithm(loss, guesses,
 
     """
 
-    if time_limit != -1:
-        start_time = time()
+    old_population = np.array(guesses)
+    pop_size0 = len(old_population)
+    pop_size1 = pop_size0
+    pop_size_min = math.sqrt(pop_size0)
+    if adaptive_population:
+        pop_size_space = [int(s) for s in np.linspace(pop_size0, pop_size_min, max_iter)]
 
-    memory = sl._setup_memory(memory)
-    if memory:
-        loss = memory.cache(loss)
+    if eta == 'auto':
+        eta_upper = np.std(old_population, axis=0)
+        eta_lower = eta_upper * 0.1
+        eta0 = np.geomspace(eta_upper, eta_lower, max_iter)[int(max_iter / 2)]
 
-    if not rng:
-        rng = np.random.default_rng()
-
-    def ga_(parallel):
-        old_population = np.array(guesses)
-        pop_size0 = len(old_population)
-        pop_size1 = pop_size0
-        pop_size_min = math.sqrt(pop_size0)
-        if adaptive_population:
-            pop_size_space = [int(s) for s in np.linspace(pop_size0, pop_size_min, max_iter)]
-
-        if eta == 'auto':
-            eta_upper = np.std(old_population, axis=0)
-            eta_lower = eta_upper * 0.1
-            eta0 = np.geomspace(eta_upper, eta_lower, max_iter)[int(max_iter / 2)]
-
-        elif eta == 'adaptive':
-            eta0 = np.std(old_population, axis=0)
-            eta_min = eta0 * 0.1
-            eta_space = np.linspace(eta0, eta_min, max_iter)
-
-        else:
-            eta0 = eta
-
-        if p == 'auto':
-            p0 = 1 / old_population.shape[1]
-
-        elif p == 'adaptive':
-            p0 = 1
-            p_min = 1 / old_population.shape[1] / 2
-            p_space = np.linspace(p0, p_min, max_iter)
-
-        else:
-            p0 = p
-
-        p1 = p0
-        eta1 = eta0
-        var_error0 = None
-        historical_best_solution = None
-        historical_min_error = np.inf
-        last_improvement = 0
-        for iteration in range(max_iter):
-            if parallel:
-                splits = np.split(old_population, len(old_population))
-                error = np.array(parallel(delayed(loss)(split) for split in splits)).flatten()
-
-            else:
-                error = loss(old_population)
-
-            iteration_min_error = np.min(error)
-            if iteration_min_error < historical_min_error:
-                historical_min_error = iteration_min_error
-                historical_best_solution = old_population[np.argmin(error)]
-                last_improvement = 0
-
-            else:
-                last_improvement += 1
-
-            if verbose:
-                msg = f'iteration: {iteration}/{max_iter} error: {historical_min_error} best solution: {historical_best_solution}'
-                print(msg)
-
-            min_index = np.argmin(error)
-            if error[min_index] <= max_error:
-                return old_population[min_index], error[min_index]
-
-            if early_stopping_rounds != -1 and last_improvement > early_stopping_rounds:
-                break
-
-            if time_limit != -1 and time() - start_time > time_limit:
-                break
-
-            selector = selection(old_population, error, rng)
-            new_population = []
-            if elitism:
-                new_population = [old_population[min_index]]
-
-            while len(new_population) < pop_size1:
-                parent_a = next(selector)
-                parent_b = next(selector)
-                kid_a = crossover(parent_a, parent_b, rng)
-                kid_a = mutate(kid_a, p1, eta1, rng)
-                new_population.append(kid_a)
-
-            old_population = np.array(new_population)
-            var_error1 = np.var(error)
-            if var_error0 and var_error1 / var_error0 < 0.1 or iteration > math.sqrt(max_iter):
-                if p == 'adaptive':
-                    p1 = p_space[iteration]
-
-                if eta == 'adaptive':
-                    eta1 = eta_space[iteration]
-
-                if adaptive_population:
-                    pop_size1 = pop_size_space[iteration]
-
-            elif not var_error0:
-                var_error0 = var_error1
-
-        return historical_best_solution, historical_min_error
-
-    if isinstance(n_jobs, Parallel):
-        return ga_(n_jobs)
-
-    elif n_jobs == 1:
-        return ga_(None)
-
-    elif n_jobs == -1:
-        with Parallel(n_jobs=os.cpu_count()) as parallel:
-            return ga_(parallel)
-
-    elif n_jobs > 1:
-        with Parallel(n_jobs=n_jobs) as parallel:
-            return ga_(parallel)
+    elif eta == 'adaptive':
+        eta0 = np.std(old_population, axis=0)
+        eta_min = eta0 * 0.1
+        eta_space = np.linspace(eta0, eta_min, max_iter)
 
     else:
-        raise ValueError(f'n_jobs must be an int >= 1 (got {n_jobs})')
+        eta0 = eta
+
+    if p == 'auto':
+        p0 = 1 / old_population.shape[1]
+
+    elif p == 'adaptive':
+        p0 = 1
+        p_min = 1 / old_population.shape[1] / 2
+        p_space = np.linspace(p0, p_min, max_iter)
+
+    else:
+        p0 = p
+
+    p1 = p0
+    eta1 = eta0
+    var_error0 = None
+    historical_best_solution = None
+    historical_min_error = np.inf
+    for iteration in sl.infinite_count():
+        error = sl.evaluate_solutions(loss, client, old_population)
+        iteration_min_error = np.min(error)
+        if iteration_min_error < historical_min_error:
+            historical_min_error = iteration_min_error
+            historical_best_solution = old_population[np.argmin(error)]
+
+        yield iteration, historical_best_solution, historical_min_error, ''
+        min_index = np.argmin(error)
+        selector = selection(old_population, error, rng)
+        new_population = []
+        if elitism:
+            new_population = [old_population[min_index]]
+
+        while len(new_population) < pop_size1:
+            parent_a = next(selector)
+            parent_b = next(selector)
+            kid_a = crossover(parent_a, parent_b, rng)
+            kid_a = mutate(kid_a, p1, eta1, rng)
+            new_population.append(kid_a)
+
+        old_population = np.array(new_population)
+        var_error1 = np.var(error)
+        if var_error0 and var_error1 / var_error0 < 0.1 or iteration > math.sqrt(max_iter):
+            if p == 'adaptive':
+                p1 = p_space[iteration]
+
+            if eta == 'adaptive':
+                eta1 = eta_space[iteration]
+
+            if adaptive_population:
+                pop_size1 = pop_size_space[iteration]
+
+        elif not var_error0:
+            var_error0 = var_error1
 
 
 ga = genetic_algorithm
