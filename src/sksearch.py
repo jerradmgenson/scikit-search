@@ -18,9 +18,9 @@ import math
 from time import time
 
 import numpy as np
-from joblib import Memory, Parallel, delayed
+from joblib import Parallel, delayed
 
-import mayfly
+import mayflies
 import searchlib as sl
 
 
@@ -77,7 +77,7 @@ def particle_swarm_optimization(loss, guesses,
     if time_limit != -1:
         start_time = time()
 
-    memory = _setup_memory(memory)
+    memory = sl._setup_memory(memory)
     if memory:
         loss = memory.cache(loss)
 
@@ -169,109 +169,6 @@ def particle_swarm_optimization(loss, guesses,
 pso = particle_swarm_optimization
 
 
-def _setup_memory(memory):
-    if memory == 'default':
-        if os.name == 'posix':
-            memory = Memory('/dev/shm/__joblib_cache__', verbose=0)
-
-        else:
-            memory = Memory('__joblib_cache__', verbose=0)
-
-    elif not isinstance(memory, Memory):
-        memory = Memory(str(memory))
-
-    return memory
-
-
-def uniform_crossover(parent_a, parent_b, rng):
-    """
-    Defines a uniform crossover operator for genetic algorithm.
-
-    In uniform crossover, every element from each parent has an equal
-    probability of being chosen, and every element is chosen independently.
-
-    Args:
-      parent_a: A 1-D ndarray to breed with parent_b.
-      parent_b: A 1-D ndarray to breed with parent_a.
-      rng: An instance of `numpy.random.Generator`.
-
-    Returns:
-      An ndarray of shape `parent_a.shape` that is the result of breeding
-      parent_a with parent_b.
-
-    """
-
-    return np.where(rng.random(len(parent_a)) > 0.5,
-                    parent_a,
-                    parent_b)
-
-
-def default_mutate(a, p, eta, rng):
-    """
-    Defines the default mutation operator for genetic algorithm.
-
-    In this mutation operator, every element of `a` has a probability `p` of
-    being randomly mutated with magnitude `eta`.
-
-    Args:
-      a: A 1-D ndarray to mutate.
-      p: The probability, as a number between 0 and 1, to mutate each element
-         of `a`.
-      eta: An array of shape a.shape specifying the magnitude of the mutations.
-      rng: An instance of `numpy.random.Generator`.
-
-    Returns:
-      A mutated ndarray with shape `a.shape`.
-
-    """
-
-    mutated = a + rng.random(a.shape) * rng.choice([1, -1], a.shape) * eta
-    return np.where(rng.random(a.shape) > p, a, mutated)
-
-
-def fitness_proportional_selection(population, errors, rng):
-    """
-    Defines a fitness proportional selection operator for genetic algorithm.
-
-    In fitness proportional selection, each row in `population` has a
-    probability of being selected that is linearly proportional to its rank in
-    the fitness landscape (which is the inverse of the error landscape).
-
-    Args:
-      population: A 2-D ndarray of possible solutions to an optimization
-                  problem.
-      errors: A 1-D nadarray of errors corresponding to each row in
-              `population`.
-
-      rng: An instance of `numpy.random.Generator`.
-
-    Yields:
-      Rows selected from `population` as 1-D ndarrays.
-
-    """
-
-    population = population[np.argsort(errors)]
-    errors = np.sort(errors)
-    selection_probability = np.linspace(100, 0,
-                                        num=len(population),
-                                        endpoint=False)
-
-    scaling_factor = 1 / np.sum(selection_probability)
-    selection_probability = selection_probability * scaling_factor
-    fp_correction = 1 - np.sum(selection_probability)
-    selection_probability[0] += fp_correction
-    indices = np.arange(len(population))
-
-    while True:
-        parent_a, parent_b = rng.choice(indices,
-                                        size=2,
-                                        replace=False,
-                                        p=selection_probability)
-
-        yield population[parent_a]
-        yield population[parent_b]
-
-
 def genetic_algorithm(loss, guesses,
                       max_error=0,
                       max_iter=1000,
@@ -285,9 +182,9 @@ def genetic_algorithm(loss, guesses,
                       eta='auto',
                       adaptive_population=False,
                       elitism=False,
-                      crossover=uniform_crossover,
-                      mutate=default_mutate,
-                      selection=fitness_proportional_selection):
+                      crossover=sl.uniform_crossover,
+                      mutate=sl.default_mutate,
+                      selection=sl.fitness_proportional_selection):
     """
     Minimize a loss function using genetic algorithm.
 
@@ -356,7 +253,7 @@ def genetic_algorithm(loss, guesses,
     if time_limit != -1:
         start_time = time()
 
-    memory = _setup_memory(memory)
+    memory = sl._setup_memory(memory)
     if memory:
         loss = memory.cache(loss)
 
@@ -480,64 +377,6 @@ def genetic_algorithm(loss, guesses,
 
 
 ga = genetic_algorithm
-
-
-def random_restarts(loss, guesses, search_func, *args,
-                    rng=None,
-                    verbose=False,
-                    restarts=2,
-                    **kwargs):
-    """
-    Minimize a loss function through an arbitrary search with
-    random restarts.
-
-    Args:
-      loss: The loss function to be minimized. Accepts objects of the
-            same type as guesses and returns a 1-D ndarray of error scores,
-            where lower scores are better.
-      guesses: A 2-D array-like object containing candidate solutions to the
-               search problem. Should be compatible with numpy.ndarray.
-               This argument may also be a function that accepts an instance
-               of numpy.random.Generator and returns guesses.
-      search_func: The search function to call.
-      *args: Additional positional arguments to `search_func`.
-      rng: An instance of numpy.random.Generator. If not given, a new Generator
-           will be created.
-      verbose: Set to `True` to print the error on each iteration. Default
-               is `False`.
-      restarts: The number of restarts to perform. Default is `2`.
-      **kwargs: Additional keyword arguments to `search_func`.
-
-    Returns:
-      A tuple of (best_solution, error).
-
-    """
-
-    if not rng:
-        rng = np.random.default_rng()
-
-    best_solution = None
-    best_error = np.inf
-    for i in range(restarts):
-        if verbose:
-            print(f'restart: {i}')
-
-        try:
-            guesses0 = guesses(rng)
-
-        except TypeError:
-            guesses0 = guesses
-
-        solution, error = search_func(loss, guesses0, *args,
-                                      rng=rng,
-                                      verbose=verbose,
-                                      **kwargs)
-
-        if error < best_error:
-            best_solution = solution
-            best_error = error
-
-    return best_solution, best_error
 
 
 @sl.search_algorithm
@@ -687,33 +526,33 @@ def mayfly_algorithm(loss, guesses,
 
     yield 0, hbest, hbest_error, 'initialization'
     for iteration in sl.infinite_count(1):
-        male_velocities = mayfly.update_male_velocities(males,
-                                                        male_velocities,
-                                                        male_pbest,
-                                                        gbest,
-                                                        a1,
-                                                        a2,
-                                                        beta,
-                                                        d,
-                                                        vmax,
-                                                        g,
-                                                        rng)
+        male_velocities = mayflies.update_male_velocities(males,
+                                                          male_velocities,
+                                                          male_pbest,
+                                                          gbest,
+                                                          a1,
+                                                          a2,
+                                                          beta,
+                                                          d,
+                                                          vmax,
+                                                          g,
+                                                          rng)
 
         if sigma0 == 'adaptive':
             sigma = (max_iter - iteration + 1) / max_iter
 
         d = d * sigma
-        female_velocities = mayfly.update_female_velocities(females,
-                                                            female_velocities,
-                                                            female_errors,
-                                                            males,
-                                                            male_errors,
-                                                            fl,
-                                                            a2,
-                                                            beta,
-                                                            vmax,
-                                                            g,
-                                                            rng)
+        female_velocities = mayflies.update_female_velocities(females,
+                                                              female_velocities,
+                                                              female_errors,
+                                                              males,
+                                                              male_errors,
+                                                              fl,
+                                                              a2,
+                                                              beta,
+                                                              vmax,
+                                                              g,
+                                                              rng)
 
         fl = fl * sigma
         if g is not None:
@@ -744,13 +583,13 @@ def mayfly_algorithm(loss, guesses,
         female_velocities = female_velocities[sort_indices]
         female_errors = female_errors[sort_indices]
 
-        offspring = mayfly.breed_mayflies(males,
-                                          male_errors,
-                                          females,
-                                          female_errors,
-                                          rng)
+        offspring = mayflies.breed_mayflies(males,
+                                            male_errors,
+                                            females,
+                                            female_errors,
+                                            rng)
 
-        offspring = np.array([default_mutate(a, p1, eta1, rng) for a in offspring])
+        offspring = np.array([sl.default_mutate(a, p1, eta1, rng) for a in offspring])
         if p == 'adaptive':
             p1 = p_space[iteration-1]
 
@@ -770,20 +609,78 @@ def mayfly_algorithm(loss, guesses,
         male_offspring_errors = offspring_errors[:sep]
         female_offspring_errors = offspring_errors[sep:]
 
-        males, male_velocities, male_errors, male_pbest = mayfly.replace_worst(males,
-                                                                               male_velocities,
-                                                                               male_errors,
-                                                                               male_offspring,
-                                                                               male_offspring_errors,
-                                                                               male_pbest)
+        males, male_velocities, male_errors, male_pbest = mayflies.replace_worst(males,
+                                                                                 male_velocities,
+                                                                                 male_errors,
+                                                                                 male_offspring,
+                                                                                 male_offspring_errors,
+                                                                                 male_pbest)
 
-        females, female_velocities, female_errors = mayfly.replace_worst(females,
-                                                                         female_velocities,
-                                                                         female_errors,
-                                                                         female_offspring,
-                                                                         female_offspring_errors)
+        females, female_velocities, female_errors = mayflies.replace_worst(females,
+                                                                           female_velocities,
+                                                                           female_errors,
+                                                                           female_offspring,
+                                                                           female_offspring_errors)
 
-        male_pbest = mayfly.update_pbest(males, male_errors, male_pbest)
+        male_pbest = mayflies.update_pbest(males, male_errors, male_pbest)
 
 
 ma = mayfly_algorithm
+
+
+def random_restarts(loss, guesses, search_func, *args,
+                    rng=None,
+                    verbose=False,
+                    restarts=2,
+                    **kwargs):
+    """
+    Minimize a loss function through an arbitrary search with
+    random restarts.
+
+    Args:
+      loss: The loss function to be minimized. Accepts objects of the
+            same type as guesses and returns a 1-D ndarray of error scores,
+            where lower scores are better.
+      guesses: A 2-D array-like object containing candidate solutions to the
+               search problem. Should be compatible with numpy.ndarray.
+               This argument may also be a function that accepts an instance
+               of numpy.random.Generator and returns guesses.
+      search_func: The search function to call.
+      *args: Additional positional arguments to `search_func`.
+      rng: An instance of numpy.random.Generator. If not given, a new Generator
+           will be created.
+      verbose: Set to `True` to print the error on each iteration. Default
+               is `False`.
+      restarts: The number of restarts to perform. Default is `2`.
+      **kwargs: Additional keyword arguments to `search_func`.
+
+    Returns:
+      A tuple of (best_solution, error).
+
+    """
+
+    if not rng:
+        rng = np.random.default_rng()
+
+    best_solution = None
+    best_error = np.inf
+    for i in range(restarts):
+        if verbose:
+            print(f'restart: {i}')
+
+        try:
+            guesses0 = guesses(rng)
+
+        except TypeError:
+            guesses0 = guesses
+
+        solution, error = search_func(loss, guesses0, *args,
+                                      rng=rng,
+                                      verbose=verbose,
+                                      **kwargs)
+
+        if error < best_error:
+            best_solution = solution
+            best_error = error
+
+    return best_solution, best_error

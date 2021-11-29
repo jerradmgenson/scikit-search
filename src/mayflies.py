@@ -1,5 +1,5 @@
 """
-A collection of functions related to mayfly optimization algorithm.
+A library of functions related to mayfly optimization algorithm.
 
 Copyright 2021 Jerrad Michael Genson
 
@@ -101,7 +101,9 @@ def breed_mayflies(males, male_errors, females, female_errors, rng):
     for male, female in zip(males, females):
         offspring.extend(mayfly_crossover(male, female, rng))
 
-    return np.array(offspring)
+    offspring = np.array(offspring)
+
+    return offspring
 
 
 def mayfly_crossover(male, female, rng):

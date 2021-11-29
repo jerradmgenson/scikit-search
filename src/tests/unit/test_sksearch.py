@@ -23,6 +23,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import balanced_accuracy_score
 
 import sksearch
+import searchlib as sl
 
 TEST_DATA = Path(__file__).parent.parent / 'data'
 
@@ -32,7 +33,7 @@ def random_solutions(a, n,
                      eta=2):
     solutions = []
     for _ in range(n):
-        a0 = sksearch.default_mutate(a, 1, eta, rng)
+        a0 = sl.default_mutate(a, 1, eta, rng)
         solutions.append(a0)
 
     return solutions
@@ -566,7 +567,7 @@ class TestUniformCrossover(unittest.TestCase):
         parent_a = np.zeros(10000)
         parent_b = np.ones(10000)
         rng = np.random.default_rng(0)
-        child = sksearch.uniform_crossover(parent_a, parent_b, rng)
+        child = sl.uniform_crossover(parent_a, parent_b, rng)
         self.assertLessEqual(np.abs(np.sum(child) - 5000), 10)
 
 
@@ -574,19 +575,19 @@ class TestDefaultMutate(unittest.TestCase):
     def test_p_0(self):
         a = np.zeros(10000)
         rng = np.random.default_rng(0)
-        b = sksearch.default_mutate(a, 0, 1, rng)
+        b = sl.default_mutate(a, 0, 1, rng)
         self.assertEqual(np.sum(b > 0), 0)
 
     def test_p_1(self):
         a = np.zeros(10000)
         rng = np.random.default_rng(0)
-        b = sksearch.default_mutate(a, 1, 1, rng)
+        b = sl.default_mutate(a, 1, 1, rng)
         self.assertEqual(np.sum(b == 0), 0)
 
     def test_p_05(self):
         a = np.zeros(10000)
         rng = np.random.default_rng(0)
-        b = sksearch.default_mutate(a, 0.5, 1, rng)
+        b = sl.default_mutate(a, 0.5, 1, rng)
         self.assertLessEqual(np.abs(np.sum(b == 0) - 5000), 5)
 
 

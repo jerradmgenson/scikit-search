@@ -12,11 +12,11 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 from itertools import repeat
 from functools import wraps
 from time import time
-from os import cpu_count
+from os import cpu_count, name as os_name
 
 import numpy as np
 from dask.distributed import Client, Future
-from joblib import hash as joblib_hash
+from joblib import Memory, hash as joblib_hash
 
 
 def search_algorithm(search_func):
@@ -216,3 +216,106 @@ def find_best(solutions_errors, *solution_groups, hbest=None):
     min_index = np.argmin(errors)
 
     return solutions[min_index], errors[min_index]
+
+
+def _setup_memory(memory):
+    if memory == 'default':
+        if os_name == 'posix':
+            memory = Memory('/dev/shm/__joblib_cache__', verbose=0)
+
+        else:
+            memory = Memory('__joblib_cache__', verbose=0)
+
+    elif not isinstance(memory, Memory):
+        memory = Memory(str(memory))
+
+    return memory
+
+
+def uniform_crossover(parent_a, parent_b, rng):
+    """
+    Defines a uniform crossover operator.
+
+    In uniform crossover, every element from each parent has an equal
+    probability of being chosen, and every element is chosen independently.
+
+    Args:
+      parent_a: A 1-D ndarray to breed with parent_b.
+      parent_b: A 1-D ndarray to breed with parent_a.
+      rng: An instance of `numpy.random.Generator`.
+
+    Returns:
+      An ndarray of shape `parent_a.shape` that is the result of breeding
+      parent_a with parent_b.
+
+    """
+
+    return np.where(rng.random(len(parent_a)) > 0.5,
+                    parent_a,
+                    parent_b)
+
+
+def default_mutate(a, p, eta, rng):
+    """
+    Defines the default mutation operator.
+
+    In this mutation operator, every element of `a` has a probability `p` of
+    being randomly mutated with magnitude `eta`.
+
+    Args:
+      a: A 1-D ndarray to mutate.
+      p: The probability, as a number between 0 and 1, to mutate each element
+         of `a`.
+      eta: An array of shape a.shape specifying the magnitude of the mutations.
+      rng: An instance of `numpy.random.Generator`.
+
+    Returns:
+      A mutated ndarray with shape `a.shape`.
+
+    """
+
+    mutated = a + rng.random(a.shape) * rng.choice([1, -1], a.shape) * eta
+    return np.where(rng.random(a.shape) > p, a, mutated)
+
+
+def fitness_proportional_selection(population, errors, rng):
+    """
+    Defines a fitness proportional selection operator.
+
+    In fitness proportional selection, each row in `population` has a
+    probability of being selected that is linearly proportional to its rank in
+    the fitness landscape (which is the inverse of the error landscape).
+
+    Args:
+      population: A 2-D ndarray of possible solutions to an optimization
+                  problem.
+      errors: A 1-D nadarray of errors corresponding to each row in
+              `population`.
+
+      rng: An instance of `numpy.random.Generator`.
+
+    Yields:
+      Rows selected from `population` as 1-D ndarrays.
+
+    """
+
+    population = population[np.argsort(errors)]
+    errors = np.sort(errors)
+    selection_probability = np.linspace(100, 0,
+                                        num=len(population),
+                                        endpoint=False)
+
+    scaling_factor = 1 / np.sum(selection_probability)
+    selection_probability = selection_probability * scaling_factor
+    fp_correction = 1 - np.sum(selection_probability)
+    selection_probability[0] += fp_correction
+    indices = np.arange(len(population))
+
+    while True:
+        parent_a, parent_b = rng.choice(indices,
+                                        size=2,
+                                        replace=False,
+                                        p=selection_probability)
+
+        yield population[parent_a]
+        yield population[parent_b]
