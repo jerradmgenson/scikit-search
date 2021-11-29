@@ -132,6 +132,7 @@ class TestPSO(unittest.TestCase):
                                    max_iter=2000,
                                    max_error=1e-3,
                                    rng=rng,
+                                   verbose=True,
                                    c1=2,
                                    c2=0.1)
 
@@ -152,6 +153,7 @@ class TestPSO(unittest.TestCase):
                                    rng=rng,
                                    c1=2,
                                    c2=0.1,
+                                   verbose=True,
                                    n_jobs=2)
 
         self.assertAlmostEqual(best[0], 1.4142135623730951, 2)
@@ -169,6 +171,7 @@ class TestPSO(unittest.TestCase):
                                    c1=2,
                                    c2=1,
                                    vmax=12,
+                                   verbose=True,
                                    rng=rng)
 
         self.assertAlmostEqual(error, system_of_equations(np.array([best])))
@@ -185,6 +188,7 @@ class TestPSO(unittest.TestCase):
                                    c2=1,
                                    vmax=12,
                                    rng=rng,
+                                   verbose=True,
                                    max_error=0.56)
 
         self.assertLessEqual(error, 0.56)
@@ -200,19 +204,21 @@ class TestPSO(unittest.TestCase):
                                    c2=1,
                                    vmax=12,
                                    rng=rng,
+                                   verbose=True,
                                    early_stopping_rounds=2,
                                    max_error=0.56)
 
         self.assertGreater(error, 0.56)
 
-    def test_time_limit(self):
+    def test_max_time(self):
         guesses = np.zeros((100, 10))
         tick = time.time()
         sksearch.pso(lambda x: np.ones(len(x)),
                      guesses,
                      max_iter=100000000,
                      max_error=0,
-                     time_limit=5)
+                     verbose=True,
+                     max_time=5)
 
         tock = time.time()
         self.assertEqual(round(tock - tick), 5.0)
@@ -232,26 +238,6 @@ class TestPSO(unittest.TestCase):
             sys.stdout.close()
             sys.stdout = stdout
 
-    def test_n_jobs_parallel(self):
-        """
-        Test pso `n_jobs` with an instance of `joblib.Parallel`
-
-        """
-
-        rng = np.random.default_rng(0)
-        shape = 100, 5
-        guesses = np.full(shape, 16) * rng.random(shape)
-        with Parallel(n_jobs=2) as parallel:
-            best, error = sksearch.pso(heart_disease_classifier, guesses,
-                                       c1=2,
-                                       c2=1,
-                                       vmax=12,
-                                       n_jobs=parallel,
-                                       rng=rng,
-                                       max_error=0.56)
-
-            self.assertLessEqual(error, 0.56)
-
     def test_n_jobs_all_cores(self):
         """
         Test pso `n_jobs` with all cpu cores`
@@ -267,6 +253,7 @@ class TestPSO(unittest.TestCase):
                                    vmax=12,
                                    n_jobs=-1,
                                    rng=rng,
+                                   verbose=True,
                                    max_error=0.56)
 
         self.assertLessEqual(error, 0.56)
@@ -560,35 +547,6 @@ class TestGA(unittest.TestCase):
             sksearch.ga(lambda x: np.ones(len(x)),
                         guesses,
                         n_jobs=-2)
-
-
-class TestUniformCrossover(unittest.TestCase):
-    def test_uniform_crossover_typical_arguments(self):
-        parent_a = np.zeros(10000)
-        parent_b = np.ones(10000)
-        rng = np.random.default_rng(0)
-        child = sl.uniform_crossover(parent_a, parent_b, rng)
-        self.assertLessEqual(np.abs(np.sum(child) - 5000), 10)
-
-
-class TestDefaultMutate(unittest.TestCase):
-    def test_p_0(self):
-        a = np.zeros(10000)
-        rng = np.random.default_rng(0)
-        b = sl.default_mutate(a, 0, 1, rng)
-        self.assertEqual(np.sum(b > 0), 0)
-
-    def test_p_1(self):
-        a = np.zeros(10000)
-        rng = np.random.default_rng(0)
-        b = sl.default_mutate(a, 1, 1, rng)
-        self.assertEqual(np.sum(b == 0), 0)
-
-    def test_p_05(self):
-        a = np.zeros(10000)
-        rng = np.random.default_rng(0)
-        b = sl.default_mutate(a, 0.5, 1, rng)
-        self.assertLessEqual(np.abs(np.sum(b == 0) - 5000), 5)
 
 
 class TestRandomRestarts(unittest.TestCase):

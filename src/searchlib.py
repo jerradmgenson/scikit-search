@@ -47,6 +47,7 @@ def search_algorithm(search_func):
                  max_error=0,
                  max_iter=1000,
                  max_time=-1,
+                 early_stopping_rounds=-1,
                  n_jobs=1,
                  client=None,
                  rng=None,
@@ -56,9 +57,15 @@ def search_algorithm(search_func):
         if n_jobs == -1:
             n_jobs = cpu_count()
 
+        elif n_jobs < 1:
+            raise ValueError(f'n_jobs must be -1 or >= 1 (not {n_jobs})')
+
         if rng is None:
             rng = np.random.default_rng()
 
+        last_improvement = 0
+        lowest_error = np.inf
+        last_iteration = 0
         owns_client = False
         try:
             if client is None:
@@ -80,8 +87,20 @@ def search_algorithm(search_func):
                 if iteration > max_iter:
                     return solution, error
 
+                if error < lowest_error:
+                    lowest_error = error
+                    last_improvement = 0
+
+                elif iteration != last_iteration:
+                    last_improvement += 1
+
+                if early_stopping_rounds != -1 and last_improvement == early_stopping_rounds:
+                    return solution, error
+
                 if verbose:
                     print(f'iteration: {iteration} wall time: {round(wall_time, 2)} error: {round(error, 2)} best solution: {solution} {msg}')
+
+                last_iteration = iteration
 
         finally:
             if owns_client:

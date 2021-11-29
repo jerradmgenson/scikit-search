@@ -24,18 +24,15 @@ import mayflies
 import searchlib as sl
 
 
+@sl.search_algorithm
 def particle_swarm_optimization(loss, guesses,
                                 c1=2,
                                 c2=2,
                                 vmax=2,
-                                max_error=0,
                                 max_iter=1000,
-                                early_stopping_rounds=-1,
-                                time_limit=-1,
                                 n_jobs=1,
-                                memory='default',
-                                rng=None,
-                                verbose=False):
+                                client=None,
+                                rng=None):
     """
     Minimize a loss function using particle swarm optimization.
 
@@ -55,15 +52,13 @@ def particle_swarm_optimization(loss, guesses,
       early_stopping_rounds: The number of iterations that are allowed to pass
                              without improvement before the function returns.
                              `-1` indicates no early stopping. Default is `-1`.
-      time_limit: Amount of time that genetic algorithm is allowed to
-                  run in seconds. `-1` means no time limit. Default is `-1`.
+      max_time: Amount of time that genetic algorithm is allowed to
+                run in seconds. `-1` means no time limit. Default is `-1`.
       n_jobs: Number of processes to use when evaluating the loss function `-1`
               creates a process for each available CPU. May also be an instance
               of `joblib.Parallel`. Default is `1`.
-      memory: Location of joblib cache on the filesystem. May a string, a
-              `Path` object, an instance of `joblib.Memory`, None, or
-              'default', which uses a (generally good) location specific to
-              your operating system.
+      client: An instance of `dask.distributed.Client`. Default is a new Client
+              that uses local CPUs for concurrency.
       rng: An instance of numpy.random.Generator. If not given, a new Generator
            will be created.
       verbose: Set to `True` to print the error on each iteration. Default
@@ -74,96 +69,41 @@ def particle_swarm_optimization(loss, guesses,
 
     """
 
-    if time_limit != -1:
-        start_time = time()
+    historical_best_solution = None
+    historical_min_error = np.inf
+    guesses = np.array(guesses)
+    pbest = guesses
+    pbest_error = np.full(len(guesses), np.inf)
+    velocity = np.zeros((len(guesses),) + guesses[0].shape)
+    for iteration in sl.infinite_count():
+        gbest = None
+        gbest_error = np.inf
+        error = sl.evaluate_solutions(loss, client, guesses)
+        min_index = np.argmin(error)
+        gbest_error = error[min_index]
+        gbest = guesses[min_index]
+        if gbest_error < historical_min_error:
+            historical_best_solution = gbest
+            historical_min_error = gbest_error
 
-    memory = sl._setup_memory(memory)
-    if memory:
-        loss = memory.cache(loss)
+        pbest_filter = error < pbest_error
+        pbest_error = np.where(pbest_filter, error, pbest_error)
+        pbest_filter = np.resize(pbest_filter, pbest.shape)
+        pbest = np.where(pbest_filter, guesses, pbest)
+        velocity = (velocity
+                    + c1
+                    * rng.random(velocity.shape)
+                    * (pbest - guesses)
+                    + c2
+                    * rng.random(velocity.shape)
+                    * (gbest - guesses))
 
-    def pso_(parallel):
-        nonlocal rng
-        nonlocal guesses
+        velocity = np.where(np.abs(velocity) > vmax,
+                            vmax * np.sign(velocity),
+                            velocity)
 
-        if not rng:
-            rng = np.random.default_rng()
-
-        historical_best_solution = None
-        historical_min_error = np.inf
-        last_improvement = 0
-        guesses = np.array(guesses)
-        pbest = guesses
-        pbest_error = np.full(len(guesses), np.inf)
-        velocity = np.zeros((len(guesses),) + guesses[0].shape)
-        for iteration in range(max_iter):
-            gbest = None
-            gbest_error = np.inf
-            if parallel:
-                splits = np.split(guesses, len(guesses))
-                error = np.array(parallel(delayed(loss)(split) for split in splits)).flatten()
-
-            else:
-                error = loss(guesses)
-
-            min_index = np.argmin(error)
-            gbest_error = error[min_index]
-            gbest = guesses[min_index]
-            if gbest_error < historical_min_error:
-                historical_best_solution = gbest
-                historical_min_error = gbest_error
-                last_improvement = 0
-
-            else:
-                last_improvement += 1
-
-            if verbose:
-                print(f'iteration: {iteration} error: {historical_min_error}')
-
-            if gbest_error <= max_error:
-                return gbest, gbest_error
-
-            if early_stopping_rounds != -1 and last_improvement > early_stopping_rounds:
-                break
-
-            if time_limit != -1 and time() - start_time > time_limit:
-                break
-
-            pbest_filter = error < pbest_error
-            pbest_error = np.where(pbest_filter, error, pbest_error)
-            pbest_filter = np.resize(pbest_filter, pbest.shape)
-            pbest = np.where(pbest_filter, guesses, pbest)
-            velocity = (velocity
-                        + c1
-                        * rng.random(velocity.shape)
-                        * (pbest - guesses)
-                        + c2
-                        * rng.random(velocity.shape)
-                        * (gbest - guesses))
-
-            velocity = np.where(np.abs(velocity) > vmax,
-                                vmax * np.sign(velocity),
-                                velocity)
-
-            guesses = guesses + velocity
-
-        return historical_best_solution, historical_min_error
-
-    if isinstance(n_jobs, Parallel):
-        return pso_(n_jobs)
-
-    elif n_jobs == 1:
-        return pso_(None)
-
-    elif n_jobs == -1:
-        with Parallel(n_jobs=os.cpu_count()) as parallel:
-            return pso_(parallel)
-
-    elif n_jobs > 1:
-        with Parallel(n_jobs=n_jobs) as parallel:
-            return pso_(parallel)
-
-    else:
-        raise ValueError(f'n_jobs must be an int >= 1 (got {n_jobs})')
+        guesses = guesses + velocity
+        yield iteration, historical_best_solution, historical_min_error, ''
 
 
 pso = particle_swarm_optimization
@@ -439,8 +379,8 @@ def mayfly_algorithm(loss, guesses,
       early_stopping_rounds: The number of iterations that are allowed to pass
                              without improvement before the function returns.
                              `-1` indicates no early stopping. Default is `-1`.
-      time_limit: Amount of time that genetic algorithm is allowed to
-                  run in seconds. `-1` means no time limit. Default is `-1`.
+      max_time: Amount of time that genetic algorithm is allowed to
+                run in seconds. `-1` means no time limit. Default is `-1`.
       n_jobs: Number of processes to use when evaluating the loss function `-1`
               creates a process for each available CPU. May also be an instance
               of `joblib.Parallel`. Default is `1`.
